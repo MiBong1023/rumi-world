@@ -107,9 +107,13 @@ export default function Home() {
       {/* Header */}
       <header className="sticky top-0 z-10 w-full max-w-md bg-black/85 backdrop-blur-md border-b border-zinc-800 p-4 flex justify-between items-center">
         <h1 className="text-xl font-bold tracking-wider">RUMI WORLD</h1>
-        {user && (
-          <button onClick={() => signOut(auth)} className="text-zinc-400 hover:text-white transition-colors">
+        {user ? (
+          <button onClick={() => signOut(auth)} className="text-zinc-400 hover:text-white transition-colors" title="로그아웃">
             <LogOut className="w-5 h-5" />
+          </button>
+        ) : (
+          <button onClick={() => router.push("/login")} className="text-zinc-600 hover:text-white transition-colors" title="관리자 로그인">
+            <Lock className="w-5 h-5" />
           </button>
         )}
       </header>
@@ -235,14 +239,6 @@ export default function Home() {
       </Dialog>
       )}
 
-      {/* Admin Login Button */}
-      {!user && (
-        <div className="w-full mt-8 flex justify-center pb-8">
-          <button onClick={() => router.push("/login")} className="text-zinc-800 hover:text-zinc-600 transition-colors p-4">
-            <Lock className="w-4 h-4" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
