@@ -32,7 +32,11 @@ export default function LoginPage() {
         } catch (createErr: any) {
           console.error("Account creation failed:", createErr);
           setError(createErr.message);
-          alert("로그인/계정 생성 실패: " + createErr.message);
+          if (createErr.code === 'auth/email-already-in-use') {
+            alert("이미 생성된 관리자 계정입니다. 비밀번호가 틀렸으니 오타가 없는지(공백 등) 다시 확인해주세요!");
+          } else {
+            alert("로그인/계정 생성 실패: " + createErr.message);
+          }
         }
       } else {
         setError(err.message);
