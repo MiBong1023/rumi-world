@@ -157,10 +157,8 @@ export default function Home() {
 
       {/* Floating Action Button for Upload */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <button className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-transform hover:scale-105 active:scale-95">
-            <Plus className="h-6 w-6 font-bold" />
-          </button>
+        <DialogTrigger className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-transform hover:scale-105 active:scale-95">
+          <Plus className="h-6 w-6 font-bold" />
         </DialogTrigger>
         <DialogContent className="sm:max-w-md w-[90vw] mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-50 shadow-2xl p-6">
           <DialogHeader>
