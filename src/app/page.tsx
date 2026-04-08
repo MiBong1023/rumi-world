@@ -25,7 +25,7 @@ export default function Home() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [comment, setComment] = useState("");
   const [uploading, setUploading] = useState(false);
   
@@ -130,24 +130,28 @@ export default function Home() {
   };
 
   const handleUpload = async () => {
-    if (!file) return alert("사진을 선택해주세요.");
+    if (files.length === 0) return alert("사진을 선택해주세요.");
     if (!user) return alert("로그인이 필요합니다.");
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `posts/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
+      await Promise.all(
+        files.map(async (f) => {
+          const storageRef = ref(storage, `posts/${Date.now()}_${Math.random().toString(36).substring(7)}_${f.name}`);
+          const snapshot = await uploadBytes(storageRef, f);
+          const downloadUrl = await getDownloadURL(snapshot.ref);
 
-      await addDoc(collection(db, "posts"), {
-        imageUrl: downloadUrl,
-        comment: comment,
-        author: user.email?.split("@")[0] || "가족",
-        createdAt: serverTimestamp(),
-      });
+          await addDoc(collection(db, "posts"), {
+            imageUrl: downloadUrl,
+            comment: comment,
+            author: user.email?.split("@")[0] || "가족",
+            createdAt: serverTimestamp(),
+          });
+        })
+      );
 
       setUploadOpen(false);
-      setFile(null);
+      setFiles([]);
       setComment("");
     } catch (err: any) {
       alert("업로드 실패: " + err.message);
@@ -295,15 +299,19 @@ export default function Home() {
             </DialogHeader>
             <div className="flex flex-col gap-6 py-4">
               <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 hover:bg-zinc-100 transition-colors relative overflow-hidden">
-                {file ? (
-                  <img src={URL.createObjectURL(file)} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
+                {files.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto w-full h-full p-2 bg-zinc-800 absolute inset-0 items-center hide-scrollbar">
+                    {files.map((f, i) => (
+                      <img key={i} src={URL.createObjectURL(f)} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
+                    ))}
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-zinc-400">
                     <Upload className="mb-3 h-8 w-8" />
-                    <p className="font-medium">선택하기</p>
+                    <p className="font-medium">여러 장 선택하기</p>
                   </div>
                 )}
-                <Input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <Input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
               </label>
               <Textarea
                 placeholder="코멘트를 남겨주세요."
@@ -313,8 +321,8 @@ export default function Home() {
               />
             </div>
             <DialogFooter>
-              <Button disabled={uploading || !file} className="w-full bg-rose-500 text-white hover:bg-rose-600 py-6 rounded-xl text-lg font-bold font-sans" onClick={handleUpload}>
-                {uploading ? <Loader2 className="animate-spin" /> : "업로드"}
+              <Button disabled={uploading || files.length === 0} className="w-full bg-rose-500 text-white hover:bg-rose-600 py-6 rounded-xl text-lg font-bold font-sans" onClick={handleUpload}>
+                {uploading ? <Loader2 className="animate-spin" /> : `${files.length > 0 ? `${files.length}장 ` : ''}업로드`}
               </Button>
             </DialogFooter>
           </DialogContent>
