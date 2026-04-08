@@ -1,0 +1,16 @@
+{
+  "name": "루미 월드 (Rumi World)",
+  "short_name": "루미월드",
+  "description": "루미의 예쁜 성장 기록을 담을 프라이빗 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
