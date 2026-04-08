@@ -20,9 +20,19 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: "루미월드",
+    startupImage: "/icon.png",
   },
   formatDetection: {
     telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "512x512", type: "image/png" },
+    ],
   },
 };
 
