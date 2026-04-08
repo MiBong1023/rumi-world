@@ -307,14 +307,11 @@ export default function Home() {
       {/* Header Panel */}
       <header className="sticky top-0 z-10 w-full max-w-md bg-white border-b border-zinc-200">
         <div className="flex justify-between items-center px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center overflow-hidden">
-               <span className="font-bold text-lg text-zinc-700">R</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight">{currentYearStr}</span>
+          <div className="flex flex-col">
+            <span className="text-xl font-bold tracking-tight leading-tight">Rumi World</span>
+            <span className="text-xs text-zinc-400 font-medium mt-0.5">{getAgeString(new Date())}</span>
           </div>
           <div className="flex items-center gap-4 text-zinc-600">
-            <Search className="w-6 h-6" />
             {user ? (
               <>
                 <button onClick={() => { setTempName(appConfig.babyName); setTempDate(appConfig.birthDate); setSettingsOpen(true); }}><Settings className="w-6 h-6" /></button>
@@ -323,7 +320,6 @@ export default function Home() {
             ) : (
               <button onClick={() => router.push("/login")}><Lock className="w-6 h-6" /></button>
             )}
-            <MoreVertical className="w-6 h-6" />
           </div>
         </div>
 
@@ -379,9 +375,9 @@ export default function Home() {
                 <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-6 pointer-events-none">
                   <div className="flex justify-between items-end w-full">
                     <div className="flex flex-col text-white drop-shadow-md">
+                       <span className="text-lg font-bold opacity-90 mb-0.5">{currentYearStr}</span>
                        <span className="text-5xl font-light tracking-wide mb-1">{new Date(selectedMonth).toLocaleString('en-US', { month: 'long' })}</span>
-                       <span className="text-lg font-bold opacity-90">{currentYearStr}</span>
-                       <span className="mt-6 text-sm font-medium opacity-95">
+                       <span className="mt-4 text-sm font-medium opacity-95 bg-black/30 px-2 py-0.5 rounded-full self-start">
                          {getAgeString(new Date())}
                        </span>
                     </div>
