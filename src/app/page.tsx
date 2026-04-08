@@ -54,6 +54,18 @@ export default function Home() {
     if (storedName) setGuestName(storedName);
   }, []);
 
+  // Android Back button: close lightbox instead of exiting app
+  useEffect(() => {
+    if (lightboxPost) {
+      history.pushState({ lightbox: true }, "");
+      const handlePop = () => {
+        setLightboxPost(null);
+      };
+      window.addEventListener("popstate", handlePop);
+      return () => window.removeEventListener("popstate", handlePop);
+    }
+  }, [lightboxPost]);
+
   // Authentication Observer
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -326,7 +338,8 @@ export default function Home() {
         {/* Month Tabs */}
         {availableMonths.length > 0 && (
           <div className="flex overflow-x-auto hide-scrollbar border-t border-zinc-100">
-            <div className="flex px-2 w-full gap-4 relative">
+            <div className="flex px-2 w-full gap-4 relative items-center">
+              <span className="text-xs text-zinc-400 font-semibold pl-2 shrink-0">{currentYearStr}년</span>
               {availableMonths.map((m) => {
                 const monthNum = parseInt(m.split("-")[1], 10);
                 const isActive = selectedMonth === m;
@@ -377,9 +390,6 @@ export default function Home() {
                     <div className="flex flex-col text-white drop-shadow-md">
                        <span className="text-lg font-bold opacity-90 mb-0.5">{currentYearStr}</span>
                        <span className="text-5xl font-light tracking-wide mb-1">{new Date(selectedMonth).toLocaleString('en-US', { month: 'long' })}</span>
-                       <span className="mt-4 text-sm font-medium opacity-95 bg-black/30 px-2 py-0.5 rounded-full self-start">
-                         {getAgeString(new Date())}
-                       </span>
                     </div>
                   </div>
                 </div>
@@ -555,21 +565,21 @@ export default function Home() {
              )}
 
              {/* Add Comment Input */}
-             <div className="flex gap-2 items-center mt-2 border border-zinc-700 bg-black/40 rounded-full p-1 pl-3 shadow-sm focus-within:border-zinc-500 transition-colors">
+             <div className="flex gap-2 items-center mt-2 border border-zinc-700 bg-black/40 rounded-full py-1 pl-3 pr-1 shadow-sm focus-within:border-zinc-500 transition-colors">
                <input 
-                 className="bg-transparent text-white w-20 text-sm focus:outline-none border-r border-zinc-700 pr-2 placeholder-zinc-500 font-medium"
+                 className="bg-transparent text-white w-20 text-sm focus:outline-none border-r border-zinc-700 pr-2 placeholder-zinc-500 font-medium shrink-0"
                  placeholder="이름"
                  value={guestName}
                  onChange={e => setGuestName(e.target.value)}
                />
                <input 
-                 className="bg-transparent text-white flex-1 text-sm focus:outline-none px-2 placeholder-zinc-500"
+                 className="bg-transparent text-white flex-1 min-w-0 text-sm focus:outline-none px-2 placeholder-zinc-500"
                  placeholder="루미 예뻐요..."
                  value={newComment}
                  onChange={e => setNewComment(e.target.value)}
                  onKeyDown={e => e.key === 'Enter' && handleAddComment(activeLightboxPost)}
                />
-               <button onClick={() => handleAddComment(activeLightboxPost)} className="rounded-full bg-rose-500 hover:bg-rose-600 transition-colors w-8 h-8 flex items-center justify-center">
+               <button onClick={() => handleAddComment(activeLightboxPost)} className="rounded-full bg-rose-500 hover:bg-rose-600 transition-colors w-8 h-8 flex items-center justify-center shrink-0">
                  <Upload className="w-4 h-4 text-white" />
                </button>
              </div>
