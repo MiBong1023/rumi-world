@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import exifr from 'exifr';
-import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle } from "lucide-react";
+import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,6 +267,31 @@ export default function Home() {
     }
   };
 
+  const handleDownload = async (url: string, mediaType: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Network response error");
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `rumi_photo_${Date.now()}.${mediaType === 'video' ? 'mp4' : 'jpg'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      // CORS 등으로 fetch 실패 시, 안전하게 새 창에서 열기 방식(Fallback)
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = "_blank";
+      link.download = `rumi_photo_${Date.now()}.${mediaType === 'video' ? 'mp4' : 'jpg'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   if (loadingContext) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-50">
@@ -501,7 +526,10 @@ export default function Home() {
                <MessageCircle className="w-6 h-6 text-zinc-100 ml-3" />
                {(activeLightboxPost.comments?.length > 0) && <span className="text-zinc-100 font-semibold">{activeLightboxPost.comments.length}</span>}
                
-               <Share2 className="w-6 h-6 text-zinc-100 ml-auto" />
+               <button onClick={() => handleDownload(activeLightboxPost.imageUrl, activeLightboxPost.mediaType)} className="ml-auto flex items-center gap-1 text-zinc-100 hover:text-white active:scale-95 transition-transform">
+                 <Download className="w-6 h-6" />
+                 <span className="text-sm font-medium sr-only">다운로드</span>
+               </button>
              </div>
              {activeLightboxPost.comment && (
                  <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed mb-4">
