@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +11,7 @@ import { Label } from "@/components/ui/label";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 export default function Home() {
@@ -21,11 +20,20 @@ export default function Home() {
   const [loadingContext, setLoadingContext] = useState(true);
   
   const [posts, setPosts] = useState<any[]>([]);
+  const [appConfig, setAppConfig] = useState({ babyName: "루미", birthDate: "2026-01-01" });
   
-  const [open, setOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [comment, setComment] = useState("");
   const [uploading, setUploading] = useState(false);
+  
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tempName, setTempName] = useState("");
+  const [tempDate, setTempDate] = useState("");
+
+  const [lightboxPost, setLightboxPost] = useState<any | null>(null);
 
   // Authentication Observer
   useEffect(() => {
@@ -36,7 +44,18 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Firestore Snapshot Listener
+  // Firestore Config Snapshot
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, "config", "main"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAppConfig({ babyName: data.babyName || "루미", birthDate: data.birthDate || "2026-01-01" });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Firestore Posts Snapshot
   useEffect(() => {
     const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -49,18 +68,64 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  const handleDelete = async (postId: string, imageUrl: string) => {
+  // Set default selected month automatically
+  useEffect(() => {
+    if (posts.length > 0 && !selectedMonth) {
+      const firstPostDate = posts[0].createdAt?.toDate ? posts[0].createdAt.toDate() : new Date();
+      setSelectedMonth(`${firstPostDate.getFullYear()}-${String(firstPostDate.getMonth() + 1).padStart(2, '0')}`);
+    }
+  }, [posts, selectedMonth]);
+
+  const groupedPosts = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    posts.forEach(p => {
+      const d = p.createdAt?.toDate ? p.createdAt.toDate() : new Date();
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    return groups;
+  }, [posts]);
+
+  const availableMonths = useMemo(() => {
+    return Object.keys(groupedPosts).sort().reverse();
+  }, [groupedPosts]);
+
+  const currentMonthPosts = useMemo(() => {
+    return groupedPosts[selectedMonth] || [];
+  }, [groupedPosts, selectedMonth]);
+
+  const heroPost = currentMonthPosts.length > 0 ? currentMonthPosts[0] : null;
+  const gridPosts = currentMonthPosts.length > 1 ? currentMonthPosts.slice(1) : [];
+
+  // Calculation for Baby Age
+  const getAgeString = (targetDate: Date) => {
+    try {
+      const birth = new Date(appConfig.birthDate);
+      const diffTime = targetDate.getTime() - birth.getTime();
+      const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      
+      const years = Math.floor(diffDays / 365);
+      const months = Math.floor((diffDays % 365) / 30);
+      
+      if (years > 0 && months > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 ${months}개월`;
+      if (years > 0) return `${appConfig.babyName} 출생일로부터 ${years}년`;
+      if (months > 0) return `${appConfig.babyName} 출생일로부터 ${months}개월`;
+      return `${appConfig.babyName} 출생일로부터 ${diffDays}일`;
+    } catch {
+      return "";
+    }
+  };
+
+  const currentYearStr = selectedMonth ? selectedMonth.split("-")[0] : new Date().getFullYear().toString();
+
+  const handleSaveConfig = async () => {
     if (!user) return;
-    if (window.confirm("정말 이 사진을 삭제할까요?\n(복구할 수 없습니다)")) {
-      try {
-        if (imageUrl) {
-          const imageRef = ref(storage, imageUrl);
-          await deleteObject(imageRef);
-        }
-        await deleteDoc(doc(db, "posts", postId));
-      } catch (err: any) {
-        alert("삭제 실패: " + err.message);
-      }
+    try {
+      await setDoc(doc(db, "config", "main"), { babyName: tempName, birthDate: tempDate }, { merge: true });
+      setSettingsOpen(false);
+    } catch (err: any) {
+      alert("저장 실패: " + err.message);
     }
   };
 
@@ -70,12 +135,10 @@ export default function Home() {
 
     setUploading(true);
     try {
-      // 1. Upload to Storage
       const storageRef = ref(storage, `posts/${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(storageRef, file);
       const downloadUrl = await getDownloadURL(snapshot.ref);
 
-      // 2. Save metadata to Firestore
       await addDoc(collection(db, "posts"), {
         imageUrl: downloadUrl,
         comment: comment,
@@ -83,8 +146,7 @@ export default function Home() {
         createdAt: serverTimestamp(),
       });
 
-      // Reset Modal State
-      setOpen(false);
+      setUploadOpen(false);
       setFile(null);
       setComment("");
     } catch (err: any) {
@@ -94,149 +156,224 @@ export default function Home() {
     }
   };
 
+  const handleDelete = async (postId: string, imageUrl: string) => {
+    if (!user) return;
+    if (window.confirm("정말 이 사진을 삭제할까요?\n(복구할 수 없습니다)")) {
+      try {
+        if (imageUrl) {
+          const imageRef = ref(storage, imageUrl);
+          await deleteObject(imageRef);
+        }
+        await deleteDoc(doc(db, "posts", postId));
+        setLightboxPost(null);
+      } catch (err: any) {
+        alert("삭제 실패: " + err.message);
+      }
+    }
+  };
+
   if (loadingContext) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
-        <Loader2 className="h-10 w-10 animate-spin text-zinc-500" />
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+        <Loader2 className="h-10 w-10 animate-spin text-zinc-400" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 items-center bg-black min-h-screen text-zinc-50 relative pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-10 w-full max-w-md bg-black/85 backdrop-blur-md border-b border-zinc-800 p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold tracking-wider">RUMI WORLD</h1>
-        {user ? (
-          <button onClick={() => signOut(auth)} className="text-zinc-400 hover:text-white transition-colors" title="로그아웃">
-            <LogOut className="w-5 h-5" />
-          </button>
-        ) : (
-          <button onClick={() => router.push("/login")} className="text-zinc-600 hover:text-white transition-colors" title="관리자 로그인">
-            <Lock className="w-5 h-5" />
-          </button>
+    <div className="flex flex-col flex-1 items-center bg-white min-h-screen text-black relative pb-24 font-sans">
+      
+      {/* Header Panel */}
+      <header className="sticky top-0 z-10 w-full max-w-md bg-white border-b border-zinc-200">
+        <div className="flex justify-between items-center px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center overflow-hidden">
+               <span className="font-bold text-lg text-zinc-700">R</span>
+            </div>
+            <span className="text-xl font-bold tracking-tight">{currentYearStr}</span>
+          </div>
+          <div className="flex items-center gap-4 text-zinc-600">
+            <Search className="w-6 h-6" />
+            {user ? (
+              <>
+                <button onClick={() => { setTempName(appConfig.babyName); setTempDate(appConfig.birthDate); setSettingsOpen(true); }}><Settings className="w-6 h-6" /></button>
+                <button onClick={() => signOut(auth)}><LogOut className="w-6 h-6" /></button>
+              </>
+            ) : (
+              <button onClick={() => router.push("/login")}><Lock className="w-6 h-6" /></button>
+            )}
+            <MoreVertical className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Month Tabs */}
+        {availableMonths.length > 0 && (
+          <div className="flex overflow-x-auto hide-scrollbar border-t border-zinc-100">
+            <div className="flex px-2 w-full gap-4 relative">
+              {availableMonths.map((m) => {
+                const monthNum = parseInt(m.split("-")[1], 10);
+                const isActive = selectedMonth === m;
+                return (
+                  <button 
+                    key={m}
+                    onClick={() => setSelectedMonth(m)}
+                    className={`whitespace-nowrap px-4 py-3 font-semibold transition-colors relative ${isActive ? 'text-rose-500' : 'text-zinc-400'}`}
+                  >
+                    {monthNum}월
+                    {isActive && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-rose-500 mx-1 rounded-t-sm" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
       </header>
 
-      {/* Main Feed */}
-      <main className="flex flex-col w-full max-w-md gap-6 p-4">
+      {/* Main Content Area */}
+      <main className="flex flex-col w-full max-w-md">
         {posts.length === 0 ? (
-          <div className="text-center text-zinc-500 py-20">
-            <p>아직 등록된 사진이 없습니다.</p>
-            <p className="text-sm">우측 하단 버튼을 눌러 첫 추억을 남겨보세요!</p>
+          <div className="flex flex-col items-center justify-center py-32 text-zinc-400 gap-4">
+            <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center">
+              <Upload className="w-8 h-8 text-zinc-300" />
+            </div>
+            <p className="font-medium text-zinc-500">아직 등록된 사진이 없습니다.</p>
           </div>
         ) : (
-          posts.map((post) => (
-            <Card key={post.id} className="bg-zinc-900 border-zinc-800 text-zinc-50 overflow-hidden shadow-xl rounded-2xl">
-              <CardHeader className="p-4 flex flex-row items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-sm uppercase">
-                  {post.author.charAt(0)}
+          <>
+            {/* Hero Profile Image */}
+            {heroPost && (
+              <div 
+                className="w-full aspect-[4/5] relative bg-zinc-200 cursor-pointer overflow-hidden group"
+                onClick={() => setLightboxPost(heroPost)}
+              >
+                <img src={heroPost.imageUrl} alt="Hero" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                
+                {/* Overlay Text */}
+                <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-6 pointer-events-none">
+                  <div className="flex justify-between items-end w-full">
+                    <div className="flex flex-col text-white drop-shadow-md">
+                       <span className="text-5xl font-light tracking-wide mb-1">{new Date(selectedMonth).toLocaleString('en-US', { month: 'long' })}</span>
+                       <span className="text-lg font-bold opacity-90">{currentYearStr}</span>
+                       <span className="mt-6 text-sm font-medium opacity-95">
+                         {getAgeString(heroPost.createdAt?.toDate ? heroPost.createdAt.toDate() : new Date())}
+                       </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-col flex-1">
-                  <span className="font-semibold text-sm">{post.author}</span>
-                  <span className="text-xs text-zinc-400">
-                    {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleDateString() : "방금 전"}
-                  </span>
-                </div>
-                {user && (
-                  <button onClick={() => handleDelete(post.id, post.imageUrl)} className="text-zinc-500 hover:text-red-400 transition-colors ml-auto p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </CardHeader>
-              <div className="w-full aspect-square relative bg-zinc-800">
-                <img
-                  src={post.imageUrl}
-                  alt="Feed photo"
-                  className="w-full h-full object-cover"
-                />
               </div>
-              <CardContent className="p-4">
-                <div className="flex gap-4 mb-4">
-                  <button className="hover:text-red-500 transition-colors">
-                    <Heart className="w-6 h-6" />
-                  </button>
-                  <button className="hover:text-zinc-300 transition-colors">
-                    <MessageCircle className="w-6 h-6" />
-                  </button>
-                  <button className="hover:text-zinc-300 transition-colors">
-                    <Share2 className="w-6 h-6" />
-                  </button>
-                </div>
-                {post.comment && (
-                  <p className="text-sm leading-relaxed tracking-wide text-zinc-200 whitespace-pre-wrap">
-                    <span className="font-semibold mr-2">{post.author}</span>
-                    {post.comment}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))
+            )}
+
+            {/* Grid Gallery */}
+            {gridPosts.length > 0 && (
+              <div className="grid grid-cols-3 gap-[2px] mt-[2px]">
+                {gridPosts.map(post => (
+                  <div 
+                    key={post.id} 
+                    className="aspect-square bg-zinc-200 cursor-pointer relative group overflow-hidden"
+                    onClick={() => setLightboxPost(post)}
+                  >
+                    <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 
-      {/* Floating Action Button for Upload */}
+      {/* Floating Action Button */}
       {user && (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-transform hover:scale-105 active:scale-95">
+        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+          <DialogTrigger className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 transition-colors">
             <Plus className="h-6 w-6 font-bold" />
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md w-[90vw] mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-50 shadow-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl">새 추억 남기기</DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              루미의 소중한 순간을 가족들과 공유하세요.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-6 py-4">
-            <div className="flex flex-col gap-2">
-              <Label className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">사진 선택</Label>
-              <label className="flex h-40 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-800 hover:bg-zinc-700/50 transition-colors relative overflow-hidden">
+          <DialogContent className="sm:max-w-md w-[90vw] mx-auto rounded-3xl bg-white border border-zinc-200 text-black shadow-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl">새 사진 올리기</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-6 py-4">
+              <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 hover:bg-zinc-100 transition-colors relative overflow-hidden">
                 {file ? (
-                  <img src={URL.createObjectURL(file)} alt="preview" className="absolute inset-0 w-full h-full object-cover opacity-60" />
+                  <img src={URL.createObjectURL(file)} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
-                  <div className="flex flex-col items-center justify-center pb-6 pt-5">
-                    <Upload className="mb-3 h-8 w-8 text-zinc-400" />
-                    <p className="mb-1 text-sm text-zinc-300 font-medium">클릭하여 사진 업로드</p>
-                    <p className="text-xs text-zinc-500 mt-1">PNG, JPG (최대 10MB)</p>
+                  <div className="flex flex-col items-center justify-center text-zinc-400">
+                    <Upload className="mb-3 h-8 w-8" />
+                    <p className="font-medium">선택하기</p>
                   </div>
                 )}
-                <Input 
-                  id="dropzone-file" 
-                  type="file" 
-                  accept="image/*"
-                  className="hidden" 
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                />
+                <Input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
               </label>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="comment" className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">코멘트</Label>
               <Textarea
-                id="comment"
-                placeholder="오늘 루미는 어땠나요?"
-                className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 resize-none h-24 focus-visible:ring-zinc-600"
+                placeholder="코멘트를 남겨주세요."
+                className="bg-white border-zinc-200 resize-none h-24 text-base"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
               />
             </div>
+            <DialogFooter>
+              <Button disabled={uploading || !file} className="w-full bg-rose-500 text-white hover:bg-rose-600 py-6 rounded-xl text-lg font-bold font-sans" onClick={handleUpload}>
+                {uploading ? <Loader2 className="animate-spin" /> : "업로드"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-md w-[90vw] mx-auto rounded-3xl bg-white text-black p-6">
+          <DialogHeader><DialogTitle>아기 정보 설정</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex flex-col gap-2">
+               <Label>이름 (태명)</Label>
+               <Input value={tempName} onChange={e => setTempName(e.target.value)} placeholder="루미" />
+            </div>
+            <div className="flex flex-col gap-2">
+               <Label>생년월일 (YYYY-MM-DD)</Label>
+               <Input value={tempDate} onChange={e => setTempDate(e.target.value)} placeholder="2026-01-01" type="date" />
+            </div>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              disabled={uploading || !file}
-              className="w-full bg-white text-black hover:bg-zinc-200 font-bold tracking-wide py-6 rounded-xl"
-              onClick={handleUpload}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 저장 중...
-                </>
-              ) : "업로드하기"}
-            </Button>
+            <Button onClick={handleSaveConfig} className="w-full bg-zinc-900 text-white hover:bg-zinc-800 py-6 rounded-xl text-md">저장하기</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox Viewer */}
+      {lightboxPost && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col text-white animate-in fade-in duration-200">
+          <div className="flex justify-between items-center p-4 min-h-16">
+            <button onClick={() => setLightboxPost(null)} className="p-2 text-zinc-300 hover:text-white"><X className="w-8 h-8" /></button>
+            <span className="text-sm font-medium text-zinc-400">
+               {lightboxPost.createdAt?.toDate ? lightboxPost.createdAt.toDate().toLocaleDateString() : ""}
+            </span>
+            <div className="w-10 flex justify-end">
+              {user && (
+                <button onClick={() => handleDelete(lightboxPost.id, lightboxPost.imageUrl)} className="p-2 text-zinc-400 hover:text-red-400">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-0 overflow-hidden relative">
+            <img src={lightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
+          </div>
+          <div className="p-6 bg-gradient-to-t from-black via-black/80 to-transparent">
+             <div className="flex gap-4 mb-4">
+               <Heart className="w-6 h-6 text-zinc-100" />
+               <MessageCircle className="w-6 h-6 text-zinc-100" />
+               <Share2 className="w-6 h-6 text-zinc-100" />
+             </div>
+             {lightboxPost.comment && (
+                 <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                   <span className="font-semibold mr-2">{lightboxPost.author}</span>
+                   {lightboxPost.comment}
+                 </p>
+             )}
+          </div>
+        </div>
       )}
 
     </div>
