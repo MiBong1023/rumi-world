@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 export default function Home() {
@@ -35,6 +35,24 @@ export default function Home() {
   const [tempDate, setTempDate] = useState("");
 
   const [lightboxPost, setLightboxPost] = useState<any | null>(null);
+
+  // Community State
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [guestName, setGuestName] = useState<string>("");
+  const [newComment, setNewComment] = useState("");
+
+  // Init Device ID and Name
+  useEffect(() => {
+    let storedId = localStorage.getItem("rumi_device_id");
+    if (!storedId) {
+      storedId = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      localStorage.setItem("rumi_device_id", storedId);
+    }
+    setDeviceId(storedId);
+
+    const storedName = localStorage.getItem("rumi_guest_name");
+    if (storedName) setGuestName(storedName);
+  }, []);
 
   // Authentication Observer
   useEffect(() => {
@@ -100,6 +118,11 @@ export default function Home() {
   const currentMonthPosts = useMemo(() => {
     return groupedPosts[selectedMonth] || [];
   }, [groupedPosts, selectedMonth]);
+
+  const activeLightboxPost = useMemo(() => {
+    if (!lightboxPost) return null;
+    return posts.find(p => p.id === lightboxPost.id) || lightboxPost;
+  }, [posts, lightboxPost]);
 
   const heroPost = currentMonthPosts.length > 0 ? currentMonthPosts[0] : null;
   const gridPosts = currentMonthPosts.length > 1 ? currentMonthPosts.slice(1) : [];
@@ -197,6 +220,50 @@ export default function Home() {
       } catch (err: any) {
         alert("삭제 실패: " + err.message);
       }
+    }
+  };
+
+  const handleToggleLike = async (post: any) => {
+    if (!deviceId) return;
+    const postRef = doc(db, "posts", post.id);
+    const hasLiked = post.likes && post.likes.includes(deviceId);
+    try {
+       await updateDoc(postRef, {
+         likes: hasLiked ? arrayRemove(deviceId) : arrayUnion(deviceId)
+       });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleAddComment = async (post: any) => {
+    if (!guestName.trim()) return alert("이름을 입력해주세요.");
+    if (!newComment.trim()) return alert("댓글 내용을 입력해주세요.");
+
+    localStorage.setItem("rumi_guest_name", guestName.trim());
+    const postRef = doc(db, "posts", post.id);
+    const commentObj = {
+       id: Math.random().toString(36).substring(2, 15),
+       author: guestName.trim(),
+       text: newComment.trim(),
+       deviceId: deviceId,
+       createdAt: new Date().toISOString()
+    };
+
+    try {
+      await updateDoc(postRef, {
+         comments: arrayUnion(commentObj)
+      });
+      setNewComment("");
+    } catch { }
+  };
+
+  const handleDeleteComment = async (post: any, commentObj: any) => {
+    if (window.confirm("댓글을 삭제하시겠습니까?")) {
+      const postRef = doc(db, "posts", post.id);
+      try {
+        await updateDoc(postRef, {
+           comments: arrayRemove(commentObj)
+        });
+      } catch { }
     }
   };
 
@@ -396,42 +463,91 @@ export default function Home() {
       </Dialog>
 
       {/* Lightbox Viewer */}
-      {lightboxPost && (
+      {activeLightboxPost && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col text-white animate-in fade-in duration-200">
           <div className="flex justify-between items-center p-4 min-h-16">
             <button onClick={() => setLightboxPost(null)} className="p-2 text-zinc-300 hover:text-white"><X className="w-8 h-8" /></button>
             <span className="text-sm font-medium text-zinc-400">
-               {lightboxPost.captureDate?.toDate 
-                 ? lightboxPost.captureDate.toDate().toLocaleDateString() 
-                 : (lightboxPost.createdAt?.toDate ? lightboxPost.createdAt.toDate().toLocaleDateString() : "")}
+               {activeLightboxPost.captureDate?.toDate 
+                 ? activeLightboxPost.captureDate.toDate().toLocaleDateString() 
+                 : (activeLightboxPost.createdAt?.toDate ? activeLightboxPost.createdAt.toDate().toLocaleDateString() : "")}
             </span>
             <div className="w-10 flex justify-end">
               {user && (
-                <button onClick={() => handleDelete(lightboxPost.id, lightboxPost.imageUrl)} className="p-2 text-zinc-400 hover:text-red-400">
+                <button onClick={() => handleDelete(activeLightboxPost.id, activeLightboxPost.imageUrl)} className="p-2 text-zinc-400 hover:text-red-400">
                   <Trash2 className="w-5 h-5" />
                 </button>
               )}
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center p-0 overflow-hidden relative bg-black">
-            {lightboxPost.mediaType === "video" ? (
-              <video src={lightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
+            {activeLightboxPost.mediaType === "video" ? (
+              <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
             ) : (
-              <img src={lightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
+              <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
             )}
           </div>
           <div className="p-6 bg-gradient-to-t from-black via-black/80 to-transparent">
-             <div className="flex gap-4 mb-4">
-               <Heart className="w-6 h-6 text-zinc-100" />
-               <MessageCircle className="w-6 h-6 text-zinc-100" />
-               <Share2 className="w-6 h-6 text-zinc-100" />
+             <div className="flex gap-3 items-center mb-4">
+               <button onClick={() => handleToggleLike(activeLightboxPost)} className="active:scale-110 transition-transform">
+                 {activeLightboxPost.likes?.includes(deviceId) ? (
+                   <Heart className="w-6 h-6 text-rose-500 fill-rose-500" />
+                 ) : (
+                   <Heart className="w-6 h-6 text-zinc-100" />
+                 )}
+               </button>
+               {activeLightboxPost.likes?.length > 0 && <span className="text-zinc-100 font-semibold">{activeLightboxPost.likes.length}</span>}
+
+               <MessageCircle className="w-6 h-6 text-zinc-100 ml-3" />
+               {(activeLightboxPost.comments?.length > 0) && <span className="text-zinc-100 font-semibold">{activeLightboxPost.comments.length}</span>}
+               
+               <Share2 className="w-6 h-6 text-zinc-100 ml-auto" />
              </div>
-             {lightboxPost.comment && (
-                 <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">
-                   <span className="font-semibold mr-2">{lightboxPost.author}</span>
-                   {lightboxPost.comment}
+             {activeLightboxPost.comment && (
+                 <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed mb-4">
+                   <span className="font-semibold mr-2">{activeLightboxPost.author}</span>
+                   {activeLightboxPost.comment}
                  </p>
              )}
+             
+             {/* Comments List */}
+             {activeLightboxPost.comments && activeLightboxPost.comments.length > 0 && (
+               <div className="flex flex-col gap-2 max-h-32 overflow-y-auto hide-scrollbar mb-4 border-l-2 border-zinc-800 pl-3">
+                 {activeLightboxPost.comments.map((c: any) => (
+                   <div key={c.id} className="flex justify-between items-start text-sm">
+                     <p className="text-zinc-300">
+                       <span className="font-semibold text-zinc-100 mr-2">{c.author}</span>
+                       {c.text}
+                     </p>
+                     {(c.deviceId === deviceId || user) && (
+                       <button onClick={() => handleDeleteComment(activeLightboxPost, c)} className="text-zinc-500 hover:text-red-400 ml-2 mt-0.5">
+                         <X className="w-4 h-4" />
+                       </button>
+                     )}
+                   </div>
+                 ))}
+               </div>
+             )}
+
+             {/* Add Comment Input */}
+             <div className="flex gap-2 items-center mt-2 border border-zinc-700 bg-black/40 rounded-full p-1 pl-3 shadow-sm focus-within:border-zinc-500 transition-colors">
+               <input 
+                 className="bg-transparent text-white w-20 text-sm focus:outline-none border-r border-zinc-700 pr-2 placeholder-zinc-500 font-medium"
+                 placeholder="이름"
+                 value={guestName}
+                 onChange={e => setGuestName(e.target.value)}
+               />
+               <input 
+                 className="bg-transparent text-white flex-1 text-sm focus:outline-none px-2 placeholder-zinc-500"
+                 placeholder="루미 예뻐요..."
+                 value={newComment}
+                 onChange={e => setNewComment(e.target.value)}
+                 onKeyDown={e => e.key === 'Enter' && handleAddComment(activeLightboxPost)}
+               />
+               <button onClick={() => handleAddComment(activeLightboxPost)} className="rounded-full bg-rose-500 hover:bg-rose-600 transition-colors w-8 h-8 flex items-center justify-center">
+                 <Upload className="w-4 h-4 text-white" />
+               </button>
+             </div>
           </div>
         </div>
       )}
