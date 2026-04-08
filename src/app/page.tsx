@@ -289,10 +289,7 @@ export default function Home() {
                        <span className="text-5xl font-light tracking-wide mb-1">{new Date(selectedMonth).toLocaleString('en-US', { month: 'long' })}</span>
                        <span className="text-lg font-bold opacity-90">{currentYearStr}</span>
                        <span className="mt-6 text-sm font-medium opacity-95">
-                         {getAgeString(
-                           heroPost.captureDate?.toDate ? heroPost.captureDate.toDate() :
-                           (heroPost.createdAt?.toDate ? heroPost.createdAt.toDate() : new Date())
-                         )}
+                         {getAgeString(new Date())}
                        </span>
                     </div>
                   </div>
