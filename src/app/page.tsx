@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import exifr from 'exifr';
 import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export default function Home() {
 
   // Firestore Posts Snapshot
   useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "posts"), orderBy("captureDate", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(d => ({
         id: d.id,
@@ -71,15 +72,20 @@ export default function Home() {
   // Set default selected month automatically
   useEffect(() => {
     if (posts.length > 0 && !selectedMonth) {
-      const firstPostDate = posts[0].createdAt?.toDate ? posts[0].createdAt.toDate() : new Date();
-      setSelectedMonth(`${firstPostDate.getFullYear()}-${String(firstPostDate.getMonth() + 1).padStart(2, '0')}`);
+      let d = new Date();
+      if (posts[0].captureDate?.toDate) d = posts[0].captureDate.toDate();
+      else if (posts[0].createdAt?.toDate) d = posts[0].createdAt.toDate();
+      setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
   }, [posts, selectedMonth]);
 
   const groupedPosts = useMemo(() => {
     const groups: Record<string, any[]> = {};
     posts.forEach(p => {
-      const d = p.createdAt?.toDate ? p.createdAt.toDate() : new Date();
+      let d = new Date();
+      if (p.captureDate && p.captureDate.toDate) d = p.captureDate.toDate();
+      else if (p.createdAt && p.createdAt.toDate) d = p.createdAt.toDate();
+      
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
@@ -137,6 +143,22 @@ export default function Home() {
     try {
       await Promise.all(
         files.map(async (f) => {
+          let captureDate = new Date();
+          if (f.type.startsWith("image/")) {
+            try {
+              const exifData = await exifr.parse(f);
+              if (exifData?.DateTimeOriginal) {
+                captureDate = new Date(exifData.DateTimeOriginal);
+              } else if (f.lastModified) {
+                captureDate = new Date(f.lastModified);
+              }
+            } catch (exifErr) {
+              if (f.lastModified) captureDate = new Date(f.lastModified);
+            }
+          } else {
+            if (f.lastModified) captureDate = new Date(f.lastModified);
+          }
+
           const storageRef = ref(storage, `posts/${Date.now()}_${Math.random().toString(36).substring(7)}_${f.name}`);
           const snapshot = await uploadBytes(storageRef, f);
           const downloadUrl = await getDownloadURL(snapshot.ref);
@@ -147,6 +169,7 @@ export default function Home() {
             comment: comment,
             author: user.email?.split("@")[0] || "가족",
             createdAt: serverTimestamp(),
+            captureDate: captureDate,
           });
         })
       );
@@ -266,7 +289,10 @@ export default function Home() {
                        <span className="text-5xl font-light tracking-wide mb-1">{new Date(selectedMonth).toLocaleString('en-US', { month: 'long' })}</span>
                        <span className="text-lg font-bold opacity-90">{currentYearStr}</span>
                        <span className="mt-6 text-sm font-medium opacity-95">
-                         {getAgeString(heroPost.createdAt?.toDate ? heroPost.createdAt.toDate() : new Date())}
+                         {getAgeString(
+                           heroPost.captureDate?.toDate ? heroPost.captureDate.toDate() :
+                           (heroPost.createdAt?.toDate ? heroPost.createdAt.toDate() : new Date())
+                         )}
                        </span>
                     </div>
                   </div>
@@ -378,7 +404,9 @@ export default function Home() {
           <div className="flex justify-between items-center p-4 min-h-16">
             <button onClick={() => setLightboxPost(null)} className="p-2 text-zinc-300 hover:text-white"><X className="w-8 h-8" /></button>
             <span className="text-sm font-medium text-zinc-400">
-               {lightboxPost.createdAt?.toDate ? lightboxPost.createdAt.toDate().toLocaleDateString() : ""}
+               {lightboxPost.captureDate?.toDate 
+                 ? lightboxPost.captureDate.toDate().toLocaleDateString() 
+                 : (lightboxPost.createdAt?.toDate ? lightboxPost.createdAt.toDate().toLocaleDateString() : "")}
             </span>
             <div className="w-10 flex justify-end">
               {user && (
