@@ -268,6 +268,7 @@ export default function Home() {
   };
 
   const handleDownload = async (url: string, mediaType: string) => {
+    if (!window.confirm("원본 파일을 기기에 다운로드 하시겠습니까?")) return;
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error("Network response error");
