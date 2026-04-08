@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical } from "lucide-react";
+import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,6 +143,7 @@ export default function Home() {
 
           await addDoc(collection(db, "posts"), {
             imageUrl: downloadUrl,
+            mediaType: f.type.startsWith("video/") ? "video" : "image",
             comment: comment,
             author: user.email?.split("@")[0] || "가족",
             createdAt: serverTimestamp(),
@@ -252,7 +253,11 @@ export default function Home() {
                 className="w-full aspect-[4/5] relative bg-zinc-200 cursor-pointer overflow-hidden group"
                 onClick={() => setLightboxPost(heroPost)}
               >
-                <img src={heroPost.imageUrl} alt="Hero" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                {heroPost.mediaType === "video" ? (
+                  <video src={heroPost.imageUrl} muted playsInline autoPlay loop className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                ) : (
+                  <img src={heroPost.imageUrl} alt="Hero" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                )}
                 
                 {/* Overlay Text */}
                 <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-6 pointer-events-none">
@@ -278,7 +283,16 @@ export default function Home() {
                     className="aspect-square bg-zinc-200 cursor-pointer relative group overflow-hidden"
                     onClick={() => setLightboxPost(post)}
                   >
-                    <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                    {post.mediaType === "video" ? (
+                      <>
+                        <video src={post.imageUrl} muted playsInline className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                        <div className="absolute top-2 right-2 text-white drop-shadow-md">
+                          <PlayCircle className="w-6 h-6 opacity-90 drop-shadow-xl" />
+                        </div>
+                      </>
+                    ) : (
+                      <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -301,17 +315,26 @@ export default function Home() {
               <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 hover:bg-zinc-100 transition-colors relative overflow-hidden">
                 {files.length > 0 ? (
                   <div className="flex gap-2 overflow-x-auto w-full h-full p-2 bg-zinc-800 absolute inset-0 items-center hide-scrollbar">
-                    {files.map((f, i) => (
-                      <img key={i} src={URL.createObjectURL(f)} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
-                    ))}
+                    {files.map((f, i) => {
+                      const isVideo = f.type.startsWith("video/");
+                      const fileUrl = URL.createObjectURL(f);
+                      return isVideo ? (
+                        <div key={i} className="h-full auto aspect-square relative flex-shrink-0">
+                          <video src={fileUrl} className="w-full h-full object-cover rounded-md" />
+                          <PlayCircle className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-white drop-shadow-xl opacity-90" />
+                        </div>
+                      ) : (
+                        <img key={i} src={fileUrl} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-zinc-400">
                     <Upload className="mb-3 h-8 w-8" />
-                    <p className="font-medium">여러 장 선택하기</p>
+                    <p className="font-medium">사진 및 동영상 선택</p>
                   </div>
                 )}
-                <Input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                <Input type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
               </label>
               <Textarea
                 placeholder="코멘트를 남겨주세요."
@@ -365,8 +388,12 @@ export default function Home() {
               )}
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center p-0 overflow-hidden relative">
-            <img src={lightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
+          <div className="flex-1 flex items-center justify-center p-0 overflow-hidden relative bg-black">
+            {lightboxPost.mediaType === "video" ? (
+              <video src={lightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
+            ) : (
+              <img src={lightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
+            )}
           </div>
           <div className="p-6 bg-gradient-to-t from-black via-black/80 to-transparent">
              <div className="flex gap-4 mb-4">
