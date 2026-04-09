@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import exifr from 'exifr';
 import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle, Download } from "lucide-react";
@@ -135,6 +135,36 @@ export default function Home() {
     if (!lightboxPost) return null;
     return posts.find(p => p.id === lightboxPost.id) || lightboxPost;
   }, [posts, lightboxPost]);
+
+  // Swipe navigation for lightbox
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  const navigateLightbox = (direction: 'prev' | 'next') => {
+    if (!activeLightboxPost) return;
+    const idx = currentMonthPosts.findIndex((p: any) => p.id === activeLightboxPost.id);
+    if (idx === -1) return;
+    if (direction === 'next' && idx < currentMonthPosts.length - 1) {
+      setLightboxPost(currentMonthPosts[idx + 1]);
+    } else if (direction === 'prev' && idx > 0) {
+      setLightboxPost(currentMonthPosts[idx - 1]);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    // 가로 이동이 세로보다 크고, 50px 이상일 때만 스와이프로 판정
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+      if (deltaX < 0) navigateLightbox('next');  // 왼쪽 스와이프 → 다음
+      else navigateLightbox('prev');              // 오른쪽 스와이프 → 이전
+    }
+  };
 
   const heroPost = currentMonthPosts.length > 0 ? currentMonthPosts[0] : null;
   const gridPosts = currentMonthPosts.length > 1 ? currentMonthPosts.slice(1) : [];
@@ -512,12 +542,27 @@ export default function Home() {
               )}
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center p-0 overflow-hidden relative bg-black">
+          <div 
+            className="flex-1 flex items-center justify-center p-0 overflow-hidden relative bg-black"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
             {activeLightboxPost.mediaType === "video" ? (
               <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
             ) : (
-              <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain" />
+              <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
             )}
+            {/* 좌우 위치 인디케이터 */}
+            {(() => {
+              const idx = currentMonthPosts.findIndex((p: any) => p.id === activeLightboxPost.id);
+              return (
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1">
+                  {currentMonthPosts.map((_: any, i: number) => (
+                    <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === idx ? 'bg-white' : 'bg-zinc-600'}`} />
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           <div className="p-6 bg-gradient-to-t from-black via-black/80 to-transparent">
              <div className="flex gap-3 items-center mb-4">
