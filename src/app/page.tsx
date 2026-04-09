@@ -578,30 +578,13 @@ export default function Home() {
                 <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
               )}
             </div>
-            {/* 위치 인디케이터 (전체 사진 기준, 최대 15개 점 표시) */}
-            {(() => {
+            {/* 위치 카운터 */}
+            {posts.length > 1 && (() => {
               const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
-              const total = posts.length;
-              if (total <= 1) return null;
-              // 사진이 많으면 현재 위치 근처 점만 표시
-              const maxDots = 15;
-              let start = 0, end = total;
-              if (total > maxDots) {
-                start = Math.max(0, idx - Math.floor(maxDots / 2));
-                end = Math.min(total, start + maxDots);
-                if (end - start < maxDots) start = Math.max(0, end - maxDots);
-              }
               return (
-                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1 px-4">
-                  {start > 0 && <div className="w-1 h-1 rounded-full bg-zinc-700" />}
-                  {posts.slice(start, end).map((_: any, i: number) => {
-                    const actualIdx = start + i;
-                    return (
-                      <div key={actualIdx} className={`rounded-full transition-all duration-200 ${actualIdx === idx ? 'w-2 h-2 bg-white' : 'w-1.5 h-1.5 bg-zinc-600'}`} />
-                    );
-                  })}
-                  {end < total && <div className="w-1 h-1 rounded-full bg-zinc-700" />}
-                </div>
+                <span className="absolute bottom-3 left-0 right-0 text-center text-xs text-zinc-400 font-medium">
+                  {idx + 1} / {posts.length}
+                </span>
               );
             })()}
           </div>
