@@ -128,3 +128,23 @@
     @apply font-sans;
   }
 }
+
+/* Lightbox swipe slide animations */
+@keyframes slide-in-left {
+  from { transform: translateX(30%); opacity: 0.3; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(-30%); opacity: 0.3; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.25s ease-out;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.25s ease-out;
+}
+
+/* Hide scrollbar utility */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -35,6 +35,8 @@ export default function Home() {
   const [tempDate, setTempDate] = useState("");
 
   const [lightboxPost, setLightboxPost] = useState<any | null>(null);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
+  const [slideKey, setSlideKey] = useState(0);
 
   // Community State
   const [deviceId, setDeviceId] = useState<string>("");
@@ -136,18 +138,34 @@ export default function Home() {
     return posts.find(p => p.id === lightboxPost.id) || lightboxPost;
   }, [posts, lightboxPost]);
 
-  // Swipe navigation for lightbox
+  // Swipe navigation for lightbox (전체 사진 대상)
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
 
+  const getPostMonth = (post: any) => {
+    let d = new Date();
+    if (post.captureDate?.toDate) d = post.captureDate.toDate();
+    else if (post.createdAt?.toDate) d = post.createdAt.toDate();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
   const navigateLightbox = (direction: 'prev' | 'next') => {
     if (!activeLightboxPost) return;
-    const idx = currentMonthPosts.findIndex((p: any) => p.id === activeLightboxPost.id);
+    const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
     if (idx === -1) return;
-    if (direction === 'next' && idx < currentMonthPosts.length - 1) {
-      setLightboxPost(currentMonthPosts[idx + 1]);
+    let targetPost = null;
+    if (direction === 'next' && idx < posts.length - 1) {
+      targetPost = posts[idx + 1];
     } else if (direction === 'prev' && idx > 0) {
-      setLightboxPost(currentMonthPosts[idx - 1]);
+      targetPost = posts[idx - 1];
+    }
+    if (targetPost) {
+      setSlideDirection(direction === 'next' ? 'left' : 'right');
+      setSlideKey(prev => prev + 1);
+      setLightboxPost(targetPost);
+      // 다른 월 사진이면 탭도 자동 전환
+      const targetMonth = getPostMonth(targetPost);
+      if (targetMonth !== selectedMonth) setSelectedMonth(targetMonth);
     }
   };
 
@@ -159,10 +177,9 @@ export default function Home() {
   const handleTouchEnd = (e: React.TouchEvent) => {
     const deltaX = e.changedTouches[0].clientX - touchStartX.current;
     const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-    // 가로 이동이 세로보다 크고, 50px 이상일 때만 스와이프로 판정
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      if (deltaX < 0) navigateLightbox('next');  // 왼쪽 스와이프 → 다음
-      else navigateLightbox('prev');              // 오른쪽 스와이프 → 이전
+      if (deltaX < 0) navigateLightbox('next');
+      else navigateLightbox('prev');
     }
   };
 
@@ -547,19 +564,43 @@ export default function Home() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            {activeLightboxPost.mediaType === "video" ? (
-              <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
-            ) : (
-              <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
-            )}
-            {/* 좌우 위치 인디케이터 */}
+            <div
+              key={slideKey}
+              className={`w-full h-full flex items-center justify-center ${
+                slideDirection === 'left' ? 'animate-slide-in-left' :
+                slideDirection === 'right' ? 'animate-slide-in-right' : ''
+              }`}
+              onAnimationEnd={() => setSlideDirection(null)}
+            >
+              {activeLightboxPost.mediaType === "video" ? (
+                <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
+              ) : (
+                <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
+              )}
+            </div>
+            {/* 위치 인디케이터 (전체 사진 기준, 최대 15개 점 표시) */}
             {(() => {
-              const idx = currentMonthPosts.findIndex((p: any) => p.id === activeLightboxPost.id);
+              const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
+              const total = posts.length;
+              if (total <= 1) return null;
+              // 사진이 많으면 현재 위치 근처 점만 표시
+              const maxDots = 15;
+              let start = 0, end = total;
+              if (total > maxDots) {
+                start = Math.max(0, idx - Math.floor(maxDots / 2));
+                end = Math.min(total, start + maxDots);
+                if (end - start < maxDots) start = Math.max(0, end - maxDots);
+              }
               return (
-                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1">
-                  {currentMonthPosts.map((_: any, i: number) => (
-                    <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === idx ? 'bg-white' : 'bg-zinc-600'}`} />
-                  ))}
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1 px-4">
+                  {start > 0 && <div className="w-1 h-1 rounded-full bg-zinc-700" />}
+                  {posts.slice(start, end).map((_: any, i: number) => {
+                    const actualIdx = start + i;
+                    return (
+                      <div key={actualIdx} className={`rounded-full transition-all duration-200 ${actualIdx === idx ? 'w-2 h-2 bg-white' : 'w-1.5 h-1.5 bg-zinc-600'}`} />
+                    );
+                  })}
+                  {end < total && <div className="w-1 h-1 rounded-full bg-zinc-700" />}
                 </div>
               );
             })()}
