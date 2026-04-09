@@ -368,7 +368,7 @@ export default function Home() {
         <div className="flex justify-between items-center px-4 py-3">
           <div className="flex flex-col">
             <span className="text-xl font-bold tracking-tight leading-tight">Rumi World</span>
-            <span className="text-xs text-zinc-400 font-medium mt-0.5">{getAgeString(new Date())}</span>
+            <span className="text-xs text-rose-600 font-semibold mt-1 bg-rose-50 px-2 py-0.5 rounded-full self-start">{getAgeString(new Date())}</span>
           </div>
           <div className="flex items-center gap-4 text-zinc-600">
             {user ? (
