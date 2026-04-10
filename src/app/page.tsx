@@ -429,9 +429,9 @@ export default function Home() {
                 onClick={() => setLightboxPost(heroPost)}
               >
                 {heroPost.mediaType === "video" ? (
-                  <video src={heroPost.imageUrl} muted playsInline autoPlay loop className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <video src={heroPost.imageUrl} muted playsInline autoPlay loop preload="auto" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 ) : (
-                  <img src={heroPost.imageUrl} alt="Hero" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={heroPost.imageUrl} alt="Hero" fetchPriority="high" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 )}
                 
                 {/* Overlay Text */}
@@ -457,13 +457,13 @@ export default function Home() {
                   >
                     {post.mediaType === "video" ? (
                       <>
-                        <video src={post.imageUrl} muted playsInline className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                        <video src={post.imageUrl} muted playsInline preload="none" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                         <div className="absolute top-2 right-2 text-white drop-shadow-md">
                           <PlayCircle className="w-6 h-6 opacity-90 drop-shadow-xl" />
                         </div>
                       </>
                     ) : (
-                      <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <img src={post.imageUrl} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     )}
                   </div>
                 ))}
@@ -578,7 +578,7 @@ export default function Home() {
               {activeLightboxPost.mediaType === "video" ? (
                 <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
               ) : (
-                <img src={activeLightboxPost.imageUrl} className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
+                <img src={activeLightboxPost.imageUrl} decoding="async" className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
               )}
             </div>
             {/* 위치 카운터 */}
