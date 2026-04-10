@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import exifr from 'exifr';
-import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle, Download } from "lucide-react";
+import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle, Download, Pencil, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,8 @@ export default function Home() {
   const [deviceId, setDeviceId] = useState<string>("");
   const [guestName, setGuestName] = useState<string>("");
   const [newComment, setNewComment] = useState("");
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [captionText, setCaptionText] = useState("");
 
   // Init Device ID and Name
   useEffect(() => {
@@ -163,6 +165,7 @@ export default function Home() {
       setSlideDirection(direction === 'next' ? 'left' : 'right');
       setSlideKey(prev => prev + 1);
       setLightboxPost(targetPost);
+      setEditingCaption(false);
       // 다른 월 사진이면 탭도 자동 전환
       const targetMonth = getPostMonth(targetPost);
       if (targetMonth !== selectedMonth) setSelectedMonth(targetMonth);
@@ -607,12 +610,52 @@ export default function Home() {
                  <span className="text-sm font-medium sr-only">다운로드</span>
                </button>
              </div>
-             {activeLightboxPost.comment && (
-                 <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed mb-4">
-                   <span className="font-semibold mr-2">{activeLightboxPost.author}</span>
-                   {activeLightboxPost.comment}
-                 </p>
-             )}
+             {/* 업로드 코멘트 (관리자: 터치하면 편집 / 없으면 추가 버튼) */}
+              {editingCaption ? (
+                <div className="flex gap-2 items-end mb-4">
+                  <textarea
+                    className="flex-1 bg-zinc-800/80 text-white text-sm rounded-lg p-2 border border-zinc-600 focus:outline-none focus:border-zinc-400 resize-none min-h-[60px]"
+                    value={captionText}
+                    onChange={e => setCaptionText(e.target.value)}
+                    placeholder="코멘트를 입력해주세요..."
+                    autoFocus
+                  />
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      onClick={async () => {
+                        await updateDoc(doc(db, "posts", activeLightboxPost.id), { comment: captionText.trim() || null });
+                        setEditingCaption(false);
+                      }}
+                      className="rounded-full bg-rose-500 hover:bg-rose-600 w-8 h-8 flex items-center justify-center transition-colors"
+                    >
+                      <Check className="w-4 h-4 text-white" />
+                    </button>
+                    <button
+                      onClick={() => setEditingCaption(false)}
+                      className="rounded-full bg-zinc-700 hover:bg-zinc-600 w-8 h-8 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+                </div>
+              ) : activeLightboxPost.comment ? (
+                <p
+                  className={`text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed mb-4 ${user ? 'cursor-pointer active:bg-zinc-800/50 rounded-lg -mx-1 px-1 py-0.5 transition-colors' : ''}`}
+                  onClick={() => { if (user) { setCaptionText(activeLightboxPost.comment); setEditingCaption(true); } }}
+                >
+                  <span className="font-semibold mr-2">{activeLightboxPost.author}</span>
+                  {activeLightboxPost.comment}
+                  {user && <Pencil className="w-3 h-3 text-zinc-500 inline ml-2" />}
+                </p>
+              ) : user ? (
+                <button
+                  onClick={() => { setCaptionText(""); setEditingCaption(true); }}
+                  className="text-sm text-zinc-500 hover:text-zinc-300 mb-4 flex items-center gap-1 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  코멘트 추가
+                </button>
+              ) : null}
              
              {/* Comments List */}
              {activeLightboxPost.comments && activeLightboxPost.comments.length > 0 && (
