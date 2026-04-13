@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -48,11 +49,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black text-zinc-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-black text-zinc-50 px-4 relative">
+      {/* 뒤로 가기 버튼 */}
+      <button 
+        onClick={() => router.push("/")}
+        className="absolute top-6 left-6 p-2 text-zinc-400 hover:text-white transition-colors"
+      >
+        <ChevronLeft className="w-8 h-8" />
+      </button>
+
       <div className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl overflow-hidden p-6">
         <div className="flex flex-col items-center mb-8 text-center pt-4">
-          <h1 className="text-2xl font-bold tracking-widest text-zinc-100 mb-2">RUMI WORLD</h1>
-          <p className="text-zinc-400 text-sm">소중한 우리 아기, 루미의 성장 일기</p>
+          <h1 className="text-2xl font-bold tracking-widest text-zinc-100 mb-2 uppercase">관리자 로그인</h1>
+          <p className="text-zinc-400 text-sm font-medium">소중한 우리 아기, 루미의 성장 일기</p>
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -82,7 +91,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-white text-black hover:bg-zinc-200 font-bold tracking-wide py-6 rounded-xl mt-4 transition-colors"
           >
-            {loading ? "기록 불러오는 중..." : "Rumi 연대기 입장"}
+            {loading ? "기록 불러오는 중..." : "관리자 로그인"}
           </Button>
         </form>
       </div>
