@@ -444,8 +444,8 @@ export default function Home() {
 
                 {/* New Badge */}
                 {isNewPost(heroPost) && (
-                  <div className="absolute top-3 left-3 bg-rose-500/90 backdrop-blur-sm px-2 py-0.5 rounded-full z-10 shadow-sm border border-white/20">
-                    <span className="text-[10px] font-bold text-white tracking-widest">NEW</span>
+                  <div className="absolute top-3 left-3 bg-rose-500/90 backdrop-blur-sm px-2 h-5 rounded-full z-10 shadow-sm border border-white/20 flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-white tracking-widest leading-none mb-[1px]">NEW</span>
                   </div>
                 )}
                 
@@ -483,8 +483,8 @@ export default function Home() {
                     
                     {/* New Badge */}
                     {isNewPost(post) && (
-                      <div className="absolute top-2 left-2 bg-rose-500/90 backdrop-blur-sm px-1.5 py-0 rounded-full z-10 shadow-sm border border-white/20 pointer-events-none">
-                        <span className="text-[8px] font-bold text-white tracking-wider">N</span>
+                      <div className="absolute top-2 left-2 bg-rose-500/90 backdrop-blur-sm w-[18px] h-[18px] rounded-full z-10 shadow-sm border border-white/20 flex items-center justify-center pointer-events-none">
+                        <span className="text-[9px] font-bold text-white leading-none mb-[1px]">N</span>
                       </div>
                     )}
                   </div>
