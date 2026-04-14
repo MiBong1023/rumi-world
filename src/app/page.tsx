@@ -151,6 +151,14 @@ export default function Home() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   };
 
+  const isNewPost = (post: any) => {
+    if (!post.createdAt) return false;
+    const timeMillis = post.createdAt?.toMillis ? post.createdAt.toMillis() : (post.createdAt?.seconds ? post.createdAt.seconds * 1000 : 0);
+    if (!timeMillis) return false;
+    const diffHours = (Date.now() - timeMillis) / (1000 * 60 * 60);
+    return diffHours <= 72;
+  };
+
   const navigateLightbox = (direction: 'prev' | 'next') => {
     if (!activeLightboxPost) return;
     const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
@@ -433,6 +441,13 @@ export default function Home() {
                 ) : (
                   <img src={heroPost.imageUrl} alt="Hero" fetchPriority="high" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 )}
+
+                {/* New Badge */}
+                {isNewPost(heroPost) && (
+                  <div className="absolute top-3 left-3 bg-rose-500/90 backdrop-blur-sm px-2 py-0.5 rounded-full z-10 shadow-sm border border-white/20">
+                    <span className="text-[10px] font-bold text-white tracking-widest">NEW</span>
+                  </div>
+                )}
                 
                 {/* Overlay Text */}
                 <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-6 pointer-events-none">
@@ -464,6 +479,13 @@ export default function Home() {
                       </>
                     ) : (
                       <img src={post.imageUrl} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                    )}
+                    
+                    {/* New Badge */}
+                    {isNewPost(post) && (
+                      <div className="absolute top-2 left-2 bg-rose-500/90 backdrop-blur-sm px-1.5 py-0 rounded-full z-10 shadow-sm border border-white/20 pointer-events-none">
+                        <span className="text-[8px] font-bold text-white tracking-wider">N</span>
+                      </div>
                     )}
                   </div>
                 ))}
