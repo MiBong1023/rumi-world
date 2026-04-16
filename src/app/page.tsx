@@ -375,7 +375,7 @@ export default function Home() {
     <div className="flex flex-col flex-1 items-center bg-white min-h-screen text-black relative pb-24 font-sans">
       
       {/* Header Panel */}
-      <header className="sticky top-0 z-10 w-full max-w-md bg-white border-b border-zinc-200">
+      <header className="sticky top-0 z-30 w-full max-w-md bg-white border-b border-zinc-200">
         <div className="flex justify-between items-center px-4 py-3">
           <div className="flex flex-col">
             <span className="text-xl font-bold tracking-tight leading-tight">Rumi World</span>
