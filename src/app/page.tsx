@@ -609,7 +609,7 @@ export default function Home() {
                   maxScale={4}
                   pinch={{ step: 5 }}
                   doubleClick={{ step: 0.5 }}
-                  onTransformed={(ref) => setIsZoomed(ref.state.scale > 1.05)}
+                  onTransform={(ref) => setIsZoomed(ref.state.scale > 1.05)}
                 >
                   {() => (
                     <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full !flex !items-center !justify-center">
