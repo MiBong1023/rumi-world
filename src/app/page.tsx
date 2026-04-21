@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -44,6 +45,7 @@ export default function Home() {
   const [newComment, setNewComment] = useState("");
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState("");
+  const [isZoomed, setIsZoomed] = useState(false);
 
   // Init Device ID and Name
   useEffect(() => {
@@ -186,6 +188,7 @@ export default function Home() {
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (isZoomed) return; // 확대 중일 때는 패닝을 위해 스와이프 무시
     const deltaX = e.changedTouches[0].clientX - touchStartX.current;
     const deltaY = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
@@ -600,7 +603,20 @@ export default function Home() {
               {activeLightboxPost.mediaType === "video" ? (
                 <video src={activeLightboxPost.imageUrl} controls playsInline autoPlay className="w-full h-auto max-h-full object-contain" />
               ) : (
-                <img src={activeLightboxPost.imageUrl} decoding="async" className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
+                <TransformWrapper
+                  initialScale={1}
+                  minScale={1}
+                  maxScale={4}
+                  pinch={{ step: 5 }}
+                  doubleClick={{ step: 0.5 }}
+                  onTransformed={(ref) => setIsZoomed(ref.state.scale > 1.05)}
+                >
+                  {() => (
+                    <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full !flex !items-center !justify-center">
+                      <img src={activeLightboxPost.imageUrl} decoding="async" className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
+                    </TransformComponent>
+                  )}
+                </TransformWrapper>
               )}
             </div>
             {/* 위치 카운터 */}
