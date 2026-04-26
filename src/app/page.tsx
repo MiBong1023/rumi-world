@@ -210,9 +210,9 @@ export default function Home() {
       const years = Math.floor(diffDays / 365);
       const months = Math.floor((diffDays % 365) / 30);
       
-      if (years > 0 && months > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 ${months}개월`;
-      if (years > 0) return `${appConfig.babyName} 출생일로부터 ${years}년`;
-      if (months > 0) return `${appConfig.babyName} 출생일로부터 ${months}개월`;
+      if (years > 0 && months > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 ${months}개월(${diffDays}일)`;
+      if (years > 0) return `${appConfig.babyName} 출생일로부터 ${years}년(${diffDays}일)`;
+      if (months > 0) return `${appConfig.babyName} 출생일로부터 ${months}개월(${diffDays}일)`;
       return `${appConfig.babyName} 출생일로부터 ${diffDays}일`;
     } catch {
       return "";
