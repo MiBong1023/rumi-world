@@ -205,14 +205,14 @@ export default function Home() {
     try {
       const birth = new Date(appConfig.birthDate);
       const diffTime = targetDate.getTime() - birth.getTime();
-      const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24))) + 1;
       
       const years = Math.floor(diffDays / 365);
       const months = Math.floor((diffDays % 365) / 30);
       
-      if (years > 0 && months > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 ${months}개월(${diffDays}일)`;
-      if (years > 0) return `${appConfig.babyName} 출생일로부터 ${years}년(${diffDays}일)`;
-      if (months > 0) return `${appConfig.babyName} 출생일로부터 ${months}개월(${diffDays}일)`;
+      if (years > 0 && months > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 ${months}개월 (${diffDays}일)`;
+      if (years > 0) return `${appConfig.babyName} 출생일로부터 ${years}년 (${diffDays}일)`;
+      if (months > 0) return `${appConfig.babyName} 출생일로부터 ${months}개월 (${diffDays}일)`;
       return `${appConfig.babyName} 출생일로부터 ${diffDays}일`;
     } catch {
       return "";
