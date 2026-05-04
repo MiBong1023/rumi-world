@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // 누구나 읽기 가능 (가족들이 로그인 없이 사진 열람)
+      allow read: if true;
+      // 관리자 로그인 시에만 업로드/삭제 가능
+      allow write: if request.auth != null;
+    }
+  }
+}

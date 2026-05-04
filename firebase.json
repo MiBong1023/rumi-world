@@ -9,5 +9,8 @@
     "providers": {
       "emailPassword": true
     }
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }
