@@ -13,9 +13,26 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, limit } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+
+// string = thumbnail URL, null = no thumbnail (use original)
+const thumbnailCache = new Map<string, string | null>();
+
+function getThumbnailStoragePath(imageUrl: string): string | null {
+  try {
+    const match = new URL(imageUrl).pathname.match(/\/o\/(.+)/);
+    if (!match) return null;
+    const filename = decodeURIComponent(match[1]).split('/').pop();
+    if (!filename) return null;
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1) return null;
+    return `thumbnails/${filename.substring(0, dot)}_400x400${filename.substring(dot)}`;
+  } catch {
+    return null;
+  }
+}
 
 interface Comment {
   id: string;
@@ -67,6 +84,8 @@ export default function Home() {
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);
+  // key absent = fetching, null = no thumbnail (use original), string = thumbnail URL
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string | null>>({});
 
   // Init Device ID and Name
   useEffect(() => {
@@ -102,20 +121,19 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Firestore Config Snapshot
+  // Firestore Config (설정은 자주 바뀌지 않으므로 1회 fetch)
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, "config", "main"), (docSnap) => {
+    getDoc(doc(db, "config", "main")).then(docSnap => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setAppConfig({ babyName: data.babyName || "루미", birthDate: data.birthDate || "2026-01-01" });
       }
     });
-    return () => unsubscribe();
   }, []);
 
   // Firestore Posts Snapshot
   useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("captureDate", "desc"));
+    const q = query(collection(db, "posts"), orderBy("captureDate", "desc"), limit(50));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(d => ({
         id: d.id,
@@ -125,6 +143,34 @@ export default function Home() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 그리드 썸네일 URL 패치 (Extension이 생성한 thumbnails/ 폴더 참조)
+  useEffect(() => {
+    posts.forEach(post => {
+      if (post.mediaType !== 'image') return;
+      if (thumbnailCache.has(post.imageUrl)) {
+        setThumbnailUrls(prev =>
+          post.id in prev ? prev : { ...prev, [post.id]: thumbnailCache.get(post.imageUrl)! }
+        );
+        return;
+      }
+      const thumbPath = getThumbnailStoragePath(post.imageUrl);
+      if (!thumbPath) {
+        thumbnailCache.set(post.imageUrl, null);
+        setThumbnailUrls(prev => ({ ...prev, [post.id]: null }));
+        return;
+      }
+      getDownloadURL(ref(storage, thumbPath))
+        .then(url => {
+          thumbnailCache.set(post.imageUrl, url);
+          setThumbnailUrls(prev => ({ ...prev, [post.id]: url }));
+        })
+        .catch(() => {
+          thumbnailCache.set(post.imageUrl, null);
+          setThumbnailUrls(prev => ({ ...prev, [post.id]: null }));
+        });
+    });
+  }, [posts]);
 
   // Set default selected month automatically
   useEffect(() => {
@@ -469,7 +515,7 @@ export default function Home() {
                 onClick={() => setLightboxPost(heroPost)}
               >
                 {heroPost.mediaType === "video" ? (
-                  <video src={heroPost.imageUrl} muted playsInline autoPlay loop preload="auto" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <video src={heroPost.imageUrl} muted playsInline autoPlay loop preload="metadata" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 ) : (
                   <img src={heroPost.imageUrl} alt="Hero" fetchPriority="high" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 )}
@@ -509,8 +555,16 @@ export default function Home() {
                           <PlayCircle className="w-6 h-6 opacity-90 drop-shadow-xl" />
                         </div>
                       </>
+                    ) : !(post.id in thumbnailUrls) ? (
+                      <div className="absolute inset-0 bg-zinc-200" />
                     ) : (
-                      <img src={post.imageUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <img
+                        src={thumbnailUrls[post.id] ?? post.imageUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      />
                     )}
                     
                     {/* New Badge */}
