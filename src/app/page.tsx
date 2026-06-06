@@ -120,7 +120,7 @@ export default function Home() {
       const postsData = snapshot.docs.map(d => ({
         id: d.id,
         ...d.data()
-      }));
+      } as Post));
       setPosts(postsData);
     });
     return () => unsubscribe();
@@ -659,10 +659,10 @@ export default function Home() {
                    <Heart className="w-6 h-6 text-zinc-100" />
                  )}
                </button>
-               {activeLightboxPost.likes?.length > 0 && <span className="text-zinc-100 font-semibold">{activeLightboxPost.likes.length}</span>}
+               {(activeLightboxPost.likes?.length ?? 0) > 0 && <span className="text-zinc-100 font-semibold">{activeLightboxPost.likes?.length}</span>}
 
                <MessageCircle className="w-6 h-6 text-zinc-100 ml-3" />
-               {(activeLightboxPost.comments?.length > 0) && <span className="text-zinc-100 font-semibold">{activeLightboxPost.comments.length}</span>}
+               {(activeLightboxPost.comments?.length ?? 0) > 0 && <span className="text-zinc-100 font-semibold">{activeLightboxPost.comments?.length}</span>}
                
                <button onClick={() => handleDownload(activeLightboxPost.imageUrl, activeLightboxPost.mediaType)} className="ml-auto flex items-center gap-1 text-zinc-100 hover:text-white active:scale-95 transition-transform">
                  <Download className="w-6 h-6" />
@@ -700,7 +700,7 @@ export default function Home() {
               ) : activeLightboxPost.comment ? (
                 <p
                   className={`text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed mb-4 ${user ? 'cursor-pointer active:bg-zinc-800/50 rounded-lg -mx-1 px-1 py-0.5 transition-colors' : ''}`}
-                  onClick={() => { if (user) { setCaptionText(activeLightboxPost.comment); setEditingCaption(true); } }}
+                  onClick={() => { if (user) { setCaptionText(activeLightboxPost.comment ?? ""); setEditingCaption(true); } }}
                 >
                   <span className="font-semibold mr-2">{activeLightboxPost.author}</span>
                   {activeLightboxPost.comment}
