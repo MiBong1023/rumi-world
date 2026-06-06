@@ -305,14 +305,22 @@ export default function Home() {
     if (!user) return;
     if (window.confirm("정말 이 사진을 삭제할까요?\n(복구할 수 없습니다)")) {
       try {
-        if (imageUrl) {
-          const imageRef = ref(storage, imageUrl);
-          await deleteObject(imageRef);
-        }
         await deleteDoc(doc(db, "posts", postId));
         setLightboxPost(null);
       } catch (err) {
         alert("삭제 실패: " + (err as FirebaseError).message);
+        return;
+      }
+
+      if (imageUrl) {
+        try {
+          await deleteObject(ref(storage, imageUrl));
+        } catch (storageErr) {
+          const code = (storageErr as FirebaseError).code;
+          if (code !== "storage/object-not-found") {
+            console.error("Storage 파일 삭제 실패 (Firestore는 이미 삭제됨):", storageErr);
+          }
+        }
       }
     }
   };
