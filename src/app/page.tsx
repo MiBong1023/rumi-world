@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import exifr from 'exifr';
-import { Plus, Heart, MessageCircle, Share2, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, Search, MoreVertical, PlayCircle, Download, Pencil, Check } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Plus, Heart, MessageCircle, Upload, Loader2, LogOut, Trash2, Lock, Settings, X, PlayCircle, Download, Pencil, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,16 +12,37 @@ import { Label } from "@/components/ui/label";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+
+interface Comment {
+  id: string;
+  author: string;
+  text: string;
+  deviceId: string;
+  createdAt: string;
+}
+
+interface Post {
+  id: string;
+  imageUrl: string;
+  mediaType: 'image' | 'video';
+  comment?: string | null;
+  author?: string;
+  createdAt?: Timestamp | null;
+  captureDate?: Timestamp | null;
+  likes?: string[];
+  comments?: Comment[];
+}
 
 export default function Home() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
-  
-  const [posts, setPosts] = useState<any[]>([]);
+
+  const [posts, setPosts] = useState<Post[]>([]);
   const [appConfig, setAppConfig] = useState({ babyName: "루미", birthDate: "2026-01-01" });
   
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -35,7 +56,7 @@ export default function Home() {
   const [tempName, setTempName] = useState("");
   const [tempDate, setTempDate] = useState("");
 
-  const [lightboxPost, setLightboxPost] = useState<any | null>(null);
+  const [lightboxPost, setLightboxPost] = useState<Post | null>(null);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
   const [slideKey, setSlideKey] = useState(0);
 
@@ -116,7 +137,7 @@ export default function Home() {
   }, [posts, selectedMonth]);
 
   const groupedPosts = useMemo(() => {
-    const groups: Record<string, any[]> = {};
+    const groups: Record<string, Post[]> = {};
     posts.forEach(p => {
       let d = new Date();
       if (p.captureDate && p.captureDate.toDate) d = p.captureDate.toDate();
@@ -146,14 +167,14 @@ export default function Home() {
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
 
-  const getPostMonth = (post: any) => {
+  const getPostMonth = (post: Post) => {
     let d = new Date();
     if (post.captureDate?.toDate) d = post.captureDate.toDate();
     else if (post.createdAt?.toDate) d = post.createdAt.toDate();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   };
 
-  const isNewPost = (post: any) => {
+  const isNewPost = (post: Post) => {
     if (!post.createdAt) return false;
     const timeMillis = post.createdAt?.toMillis ? post.createdAt.toMillis() : (post.createdAt?.seconds ? post.createdAt.seconds * 1000 : 0);
     if (!timeMillis) return false;
@@ -163,7 +184,7 @@ export default function Home() {
 
   const navigateLightbox = (direction: 'prev' | 'next') => {
     if (!activeLightboxPost) return;
-    const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
+    const idx = posts.findIndex((p: Post) => p.id === activeLightboxPost.id);
     if (idx === -1) return;
     let targetPost = null;
     if (direction === 'next' && idx < posts.length - 1) {
@@ -226,8 +247,8 @@ export default function Home() {
     try {
       await setDoc(doc(db, "config", "main"), { babyName: tempName, birthDate: tempDate }, { merge: true });
       setSettingsOpen(false);
-    } catch (err: any) {
-      alert("저장 실패: " + err.message);
+    } catch (err) {
+      alert("저장 실패: " + (err as FirebaseError).message);
     }
   };
 
@@ -248,7 +269,7 @@ export default function Home() {
               } else if (f.lastModified) {
                 captureDate = new Date(f.lastModified);
               }
-            } catch (exifErr) {
+            } catch {
               if (f.lastModified) captureDate = new Date(f.lastModified);
             }
           } else {
@@ -273,8 +294,8 @@ export default function Home() {
       setUploadOpen(false);
       setFiles([]);
       setComment("");
-    } catch (err: any) {
-      alert("업로드 실패: " + err.message);
+    } catch (err) {
+      alert("업로드 실패: " + (err as FirebaseError).message);
     } finally {
       setUploading(false);
     }
@@ -290,13 +311,13 @@ export default function Home() {
         }
         await deleteDoc(doc(db, "posts", postId));
         setLightboxPost(null);
-      } catch (err: any) {
-        alert("삭제 실패: " + err.message);
+      } catch (err) {
+        alert("삭제 실패: " + (err as FirebaseError).message);
       }
     }
   };
 
-  const handleToggleLike = async (post: any) => {
+  const handleToggleLike = async (post: Post) => {
     if (!deviceId) return;
     const postRef = doc(db, "posts", post.id);
     const hasLiked = post.likes && post.likes.includes(deviceId);
@@ -307,7 +328,7 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  const handleAddComment = async (post: any) => {
+  const handleAddComment = async (post: Post) => {
     if (!guestName.trim()) return alert("이름을 입력해주세요.");
     if (!newComment.trim()) return alert("댓글 내용을 입력해주세요.");
 
@@ -329,7 +350,7 @@ export default function Home() {
     } catch { }
   };
 
-  const handleDeleteComment = async (post: any, commentObj: any) => {
+  const handleDeleteComment = async (post: Post, commentObj: Comment) => {
     if (window.confirm("댓글을 삭제하시겠습니까?")) {
       const postRef = doc(db, "posts", post.id);
       try {
@@ -354,7 +375,7 @@ export default function Home() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
-    } catch (error) {
+    } catch {
       // CORS 등으로 fetch 실패 시, 안전하게 새 창에서 열기 방식(Fallback)
       const link = document.createElement('a');
       link.href = url;
@@ -481,7 +502,7 @@ export default function Home() {
                         </div>
                       </>
                     ) : (
-                      <img src={post.imageUrl} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <img src={post.imageUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     )}
                     
                     {/* New Badge */}
@@ -613,7 +634,7 @@ export default function Home() {
                 >
                   {() => (
                     <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full !flex !items-center !justify-center">
-                      <img src={activeLightboxPost.imageUrl} decoding="async" className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
+                      <img src={activeLightboxPost.imageUrl} alt="" decoding="async" className="w-full h-auto max-h-full object-contain select-none" draggable={false} />
                     </TransformComponent>
                   )}
                 </TransformWrapper>
@@ -621,7 +642,7 @@ export default function Home() {
             </div>
             {/* 위치 카운터 */}
             {posts.length > 1 && (() => {
-              const idx = posts.findIndex((p: any) => p.id === activeLightboxPost.id);
+              const idx = posts.findIndex((p: Post) => p.id === activeLightboxPost.id);
               return (
                 <span className="absolute bottom-3 left-0 right-0 text-center text-xs text-zinc-400 font-medium">
                   {idx + 1} / {posts.length}
@@ -698,7 +719,7 @@ export default function Home() {
              {/* Comments List */}
              {activeLightboxPost.comments && activeLightboxPost.comments.length > 0 && (
                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto hide-scrollbar mb-4 border-l-2 border-zinc-800 pl-3">
-                 {activeLightboxPost.comments.map((c: any) => (
+                 {activeLightboxPost.comments.map((c: Comment) => (
                    <div key={c.id} className="flex justify-between items-start text-sm">
                      <p className="text-zinc-300">
                        <span className="font-semibold text-zinc-100 mr-2">{c.author}</span>

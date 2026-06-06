@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,25 +24,27 @@ export default function LoginPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/");
-    } catch (err: any) {
-      console.error("Login attempt failed:", err);
-      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+    } catch (err) {
+      const firebaseErr = err as FirebaseError;
+      console.error("Login attempt failed:", firebaseErr);
+      if (firebaseErr.code === "auth/user-not-found" || firebaseErr.code === "auth/invalid-credential" || firebaseErr.code === "auth/invalid-login-credentials") {
         try {
           // If the user doesn't exist, we auto-create them for this MVP scenario
           await createUserWithEmailAndPassword(auth, email, password);
           router.push("/");
-        } catch (createErr: any) {
-          console.error("Account creation failed:", createErr);
-          setError(createErr.message);
-          if (createErr.code === 'auth/email-already-in-use') {
+        } catch (createErr) {
+          const firebaseCreateErr = createErr as FirebaseError;
+          console.error("Account creation failed:", firebaseCreateErr);
+          setError(firebaseCreateErr.message);
+          if (firebaseCreateErr.code === 'auth/email-already-in-use') {
             alert("이미 생성된 관리자 계정입니다. 비밀번호가 틀렸으니 오타가 없는지(공백 등) 다시 확인해주세요!");
           } else {
-            alert("로그인/계정 생성 실패: " + createErr.message);
+            alert("로그인/계정 생성 실패: " + firebaseCreateErr.message);
           }
         }
       } else {
-        setError(err.message);
-        alert("로그인 에러: " + err.message);
+        setError(firebaseErr.message);
+        alert("로그인 에러: " + firebaseErr.message);
       }
     } finally {
       setLoading(false);
