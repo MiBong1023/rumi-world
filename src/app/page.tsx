@@ -13,7 +13,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, limit } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import imageCompression from "browser-image-compression";
@@ -115,7 +115,7 @@ export default function Home() {
 
   // Firestore Posts Snapshot
   useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("captureDate", "desc"), limit(50));
+    const q = query(collection(db, "posts"), orderBy("captureDate", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(d => ({
         id: d.id,
