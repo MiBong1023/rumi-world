@@ -13,7 +13,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, increment, limit } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import imageCompression from "browser-image-compression";
@@ -42,6 +42,10 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
+
+  // 방문 통계 (관리자 전용)
+  const [visitStats, setVisitStats] = useState<{ date: string; count: number }[]>([]);
+  const visitCountedRef = useRef(false);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [appConfig, setAppConfig] = useState({ babyName: "루미", birthDate: "2026-01-01" });
@@ -126,6 +130,28 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
+  // 방문 카운트: 로드당 1회 +1 (관리자 본인 접속은 제외)
+  useEffect(() => {
+    if (loadingContext) return;      // 인증 상태 확정 전엔 대기
+    if (user) return;                // 관리자 방문은 집계 제외
+    if (visitCountedRef.current) return;
+    visitCountedRef.current = true;
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setDoc(doc(db, "visits", todayKey), { count: increment(1), date: todayKey }, { merge: true })
+      .catch((err) => console.error("방문 집계 실패:", err));
+  }, [loadingContext, user]);
+
+  // 방문 통계 조회: 관리자 로그인 시에만 (최근 7일, 실시간)
+  useEffect(() => {
+    if (!user) { setVisitStats([]); return; }
+    const q = query(collection(db, "visits"), orderBy("date", "desc"), limit(7));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setVisitStats(snapshot.docs.map(d => ({ date: d.id, count: d.data().count || 0 })));
+    }, (err) => console.error("방문 통계 조회 실패:", err));
+    return () => unsubscribe();
+  }, [user]);
+
   // Set default selected month automatically
   useEffect(() => {
     if (posts.length > 0 && !selectedMonth) {
@@ -162,6 +188,23 @@ export default function Home() {
     if (!lightboxPost) return null;
     return posts.find(p => p.id === lightboxPost.id) || lightboxPost;
   }, [posts, lightboxPost]);
+
+  // 최근 7일 방문 통계 (없는 날은 0으로 채움)
+  const recentVisitDays = useMemo(() => {
+    const counts: Record<string, number> = {};
+    visitStats.forEach(v => { counts[v.date] = v.count; });
+    const days: { date: string; label: string; count: number; isToday: boolean }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      days.push({ date: key, label: `${d.getMonth() + 1}/${d.getDate()}`, count: counts[key] || 0, isToday: i === 0 });
+    }
+    return days;
+  }, [visitStats]);
+
+  const todayVisits = recentVisitDays[recentVisitDays.length - 1]?.count ?? 0;
+  const maxVisits = Math.max(1, ...recentVisitDays.map(d => d.count));
 
   // Swipe navigation for lightbox (전체 사진 대상)
   const touchStartX = useRef<number>(0);
@@ -594,6 +637,33 @@ export default function Home() {
             <div className="flex flex-col gap-2">
                <Label>생년월일 (YYYY-MM-DD)</Label>
                <Input value={tempDate} onChange={e => setTempDate(e.target.value)} placeholder="2026-01-01" type="date" />
+            </div>
+
+            {/* 방문 통계 (관리자 전용) */}
+            <div className="mt-2 pt-4 border-t border-zinc-200">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="m-0">방문 통계</Label>
+                <span className="flex items-center gap-1 text-[10px] text-zinc-400"><Lock className="w-3 h-3" />나만 보임</span>
+              </div>
+              <div className="flex items-baseline gap-2 mb-4">
+                <span className="text-4xl font-bold text-rose-500 leading-none">{todayVisits}</span>
+                <span className="text-sm text-zinc-500 font-medium">오늘 접속</span>
+              </div>
+              {/* 최근 7일 */}
+              <div className="flex items-end justify-between gap-1.5 h-20">
+                {recentVisitDays.map(d => (
+                  <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                    <span className="text-[10px] font-semibold text-zinc-600 leading-none">{d.count}</span>
+                    <div className="flex w-full items-end justify-center" style={{ height: "44px" }}>
+                      <div
+                        className={`w-full rounded-t-sm ${d.isToday ? "bg-rose-500" : "bg-rose-200"}`}
+                        style={{ height: `${Math.max(3, (d.count / maxVisits) * 44)}px` }}
+                      />
+                    </div>
+                    <span className={`text-[9px] leading-none ${d.isToday ? "font-bold text-rose-500" : "text-zinc-400"}`}>{d.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
