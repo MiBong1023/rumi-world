@@ -551,7 +551,7 @@ export default function Home() {
                   >
                     {post.mediaType === "video" ? (
                       <>
-                        <video src={post.imageUrl} muted playsInline preload="none" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                        <video src={`${post.imageUrl}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                         <div className="absolute top-2 right-2 text-white drop-shadow-md">
                           <PlayCircle className="w-6 h-6 opacity-90 drop-shadow-xl" />
                         </div>
