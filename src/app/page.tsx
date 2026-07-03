@@ -7,7 +7,6 @@ import { Plus, Heart, MessageCircle, Upload, Loader2, LogOut, Trash2, Lock, Sett
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
@@ -54,7 +53,6 @@ export default function Home() {
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const [comment, setComment] = useState("");
   const [uploading, setUploading] = useState(false);
   
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -330,7 +328,7 @@ export default function Home() {
           await addDoc(collection(db, "posts"), {
             imageUrl: downloadUrl,
             mediaType: f.type.startsWith("video/") ? "video" : "image",
-            comment: comment,
+            comment: null,
             author: user.email?.split("@")[0] || "가족",
             createdAt: serverTimestamp(),
             captureDate: captureDate,
@@ -340,7 +338,6 @@ export default function Home() {
 
       setUploadOpen(false);
       setFiles([]);
-      setComment("");
     } catch (err) {
       alert("업로드 실패: " + (err as FirebaseError).message);
     } finally {
@@ -609,12 +606,7 @@ export default function Home() {
                 )}
                 <Input type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
               </label>
-              <Textarea
-                placeholder="코멘트를 남겨주세요."
-                className="bg-white border-zinc-200 resize-none h-24 text-base"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
+              <p className="text-xs text-zinc-400 text-center -mt-2">코멘트는 업로드 후 각 사진에서 추가할 수 있어요.</p>
             </div>
             <DialogFooter>
               <Button disabled={uploading || files.length === 0} className="w-full bg-rose-500 text-white hover:bg-rose-600 py-6 rounded-xl text-lg font-bold font-sans" onClick={handleUpload}>
