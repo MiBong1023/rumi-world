@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 import { auth, db, storage } from "@/lib/firebase";
+import { useVersionCheck } from "@/lib/useVersionCheck";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, increment, limit } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
@@ -39,6 +40,9 @@ interface Post {
 
 export default function Home() {
   const router = useRouter();
+
+  // 새 버전 배포 시 자동 새로고침 (갤럭시 PWA 구버전 잔존 문제 대응)
+  useVersionCheck();
   const [user, setUser] = useState<User | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
 
