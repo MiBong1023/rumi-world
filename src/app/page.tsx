@@ -58,6 +58,15 @@ export default function Home() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // 미리보기 objectURL 은 files 가 바뀔 때 한 번만 만들고 정리해 누수를 막는다.
+  const filePreviews = useMemo(
+    () => files.map((f) => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith("video/") })),
+    [files],
+  );
+  useEffect(() => {
+    return () => filePreviews.forEach((p) => URL.revokeObjectURL(p.url));
+  }, [filePreviews]);
   
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempName, setTempName] = useState("");
@@ -297,56 +306,90 @@ export default function Home() {
     }
   };
 
+  // 파일 1장 업로드 (압축→스토리지→Firestore). 실패 시 throw.
+  const uploadOne = async (f: File) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+
+    let captureDate = new Date();
+    if (f.type.startsWith("image/")) {
+      try {
+        const exifData = await exifr.parse(f);
+        if (exifData?.DateTimeOriginal) {
+          captureDate = new Date(exifData.DateTimeOriginal);
+        } else if (f.lastModified) {
+          captureDate = new Date(f.lastModified);
+        }
+      } catch {
+        if (f.lastModified) captureDate = new Date(f.lastModified);
+      }
+    } else {
+      if (f.lastModified) captureDate = new Date(f.lastModified);
+    }
+
+    const fileToUpload = f.type.startsWith("image/")
+      ? await imageCompression(f, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true })
+      : f;
+
+    const storageRef = ref(storage, `posts/${Date.now()}_${Math.random().toString(36).substring(7)}_${f.name}`);
+    const snapshot = await uploadBytes(storageRef, fileToUpload);
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+
+    await addDoc(collection(db, "posts"), {
+      imageUrl: downloadUrl,
+      mediaType: f.type.startsWith("video/") ? "video" : "image",
+      comment: null,
+      author: user.email?.split("@")[0] || "가족",
+      createdAt: serverTimestamp(),
+      captureDate: captureDate,
+    });
+  };
+
   const handleUpload = async () => {
     if (files.length === 0) return alert("사진을 선택해주세요.");
     if (!user) return alert("로그인이 필요합니다.");
 
     setUploading(true);
-    try {
-      await Promise.all(
-        files.map(async (f) => {
-          let captureDate = new Date();
-          if (f.type.startsWith("image/")) {
-            try {
-              const exifData = await exifr.parse(f);
-              if (exifData?.DateTimeOriginal) {
-                captureDate = new Date(exifData.DateTimeOriginal);
-              } else if (f.lastModified) {
-                captureDate = new Date(f.lastModified);
-              }
-            } catch {
-              if (f.lastModified) captureDate = new Date(f.lastModified);
-            }
-          } else {
-            if (f.lastModified) captureDate = new Date(f.lastModified);
+
+    // 순차 처리 + 실패분 재시도.
+    // 모바일 메모리/네트워크 압력을 낮추고, 한 장이 실패해도 나머지는 계속 진행.
+    const MAX_ATTEMPTS = 3;
+    const failed: File[] = [];
+    let lastError: unknown = null;
+
+    for (const f of files) {
+      let ok = false;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
+        try {
+          await uploadOne(f);
+          ok = true;
+        } catch (err) {
+          lastError = err;
+          // 마지막 시도가 아니면 잠깐 쉬었다 재시도 (네트워크 순간 끊김 대응).
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 800 * attempt));
           }
+        }
+      }
+      if (!ok) failed.push(f);
+    }
 
-          const fileToUpload = f.type.startsWith("image/")
-            ? await imageCompression(f, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true })
-            : f;
+    setUploading(false);
 
-          const storageRef = ref(storage, `posts/${Date.now()}_${Math.random().toString(36).substring(7)}_${f.name}`);
-          const snapshot = await uploadBytes(storageRef, fileToUpload);
-          const downloadUrl = await getDownloadURL(snapshot.ref);
-
-          await addDoc(collection(db, "posts"), {
-            imageUrl: downloadUrl,
-            mediaType: f.type.startsWith("video/") ? "video" : "image",
-            comment: null,
-            author: user.email?.split("@")[0] || "가족",
-            createdAt: serverTimestamp(),
-            captureDate: captureDate,
-          });
-        })
-      );
-
+    if (failed.length === 0) {
       setUploadOpen(false);
       setFiles([]);
-    } catch (err) {
-      alert("업로드 실패: " + (err as FirebaseError).message);
-    } finally {
-      setUploading(false);
+      return;
     }
+
+    // 성공분은 이미 올라갔으므로, 실패한 파일만 남겨 중복 없이 재시도할 수 있게 한다.
+    setFiles(failed);
+    const succeeded = files.length - failed.length;
+    const detail = lastError ? `\n(${(lastError as FirebaseError).message})` : "";
+    alert(
+      `${files.length}장 중 ${succeeded}장 완료, ${failed.length}장 실패했어요.\n` +
+      `남은 ${failed.length}장은 그대로 두었으니 다시 업로드해 주세요.` +
+      detail,
+    );
   };
 
   const handleDelete = async (postId: string, imageUrl: string) => {
@@ -589,18 +632,16 @@ export default function Home() {
               <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 hover:bg-zinc-100 transition-colors relative overflow-hidden">
                 {files.length > 0 ? (
                   <div className="flex gap-2 overflow-x-auto w-full h-full p-2 bg-zinc-800 absolute inset-0 items-center hide-scrollbar">
-                    {files.map((f, i) => {
-                      const isVideo = f.type.startsWith("video/");
-                      const fileUrl = URL.createObjectURL(f);
-                      return isVideo ? (
+                    {filePreviews.map((p, i) => (
+                      p.isVideo ? (
                         <div key={i} className="h-full auto aspect-square relative flex-shrink-0">
-                          <video src={fileUrl} className="w-full h-full object-cover rounded-md" />
+                          <video src={p.url} className="w-full h-full object-cover rounded-md" />
                           <PlayCircle className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-white drop-shadow-xl opacity-90" />
                         </div>
                       ) : (
-                        <img key={i} src={fileUrl} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
-                      );
-                    })}
+                        <img key={i} src={p.url} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
+                      )
+                    ))}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-zinc-400">
