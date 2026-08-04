@@ -82,6 +82,8 @@ export default function Home() {
   const [newComment, setNewComment] = useState("");
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState("");
+  const [editingDate, setEditingDate] = useState(false);
+  const [dateText, setDateText] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);
 
   // Init Device ID and Name
@@ -251,6 +253,7 @@ export default function Home() {
       setSlideKey(prev => prev + 1);
       setLightboxPost(targetPost);
       setEditingCaption(false);
+      setEditingDate(false);
       // 다른 월 사진이면 탭도 자동 전환
       const targetMonth = getPostMonth(targetPost);
       if (targetMonth !== selectedMonth) setSelectedMonth(targetMonth);
@@ -303,6 +306,34 @@ export default function Home() {
       setSettingsOpen(false);
     } catch (err) {
       alert("저장 실패: " + (err as FirebaseError).message);
+    }
+  };
+
+  // 게시물의 게시 날짜(Date). captureDate 우선, 없으면 createdAt.
+  const getPostDate = (post: Post): Date => {
+    if (post.captureDate?.toDate) return post.captureDate.toDate();
+    if (post.createdAt?.toDate) return post.createdAt.toDate();
+    return new Date();
+  };
+
+  // Date → <input type="date"> 용 로컬 YYYY-MM-DD
+  const toDateInputValue = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  // 관리자: 게시 날짜 변경. 시간은 정오로 고정해 시간대 경계로 하루 밀리는 것을 방지.
+  const handleSaveDate = async () => {
+    if (!user || !activeLightboxPost || !dateText) return;
+    const [y, m, d] = dateText.split("-").map(Number);
+    if (!y || !m || !d) return;
+    try {
+      await updateDoc(doc(db, "posts", activeLightboxPost.id), {
+        captureDate: new Date(y, m - 1, d, 12, 0, 0),
+      });
+      // 다른 달로 옮겨졌으면 해당 월 탭으로 이동해 사라진 것처럼 보이지 않게 한다.
+      setSelectedMonth(`${y}-${String(m).padStart(2, "0")}`);
+      setEditingDate(false);
+    } catch (err) {
+      alert("날짜 변경 실패: " + (err as FirebaseError).message);
     }
   };
 
@@ -713,14 +744,39 @@ export default function Home() {
       {activeLightboxPost && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col text-white animate-in fade-in duration-200">
           <div className="flex justify-between items-center p-4 min-h-16">
-            <button onClick={() => setLightboxPost(null)} className="p-2 text-zinc-300 hover:text-white"><X className="w-8 h-8" /></button>
-            <span className="text-sm font-medium text-zinc-400">
-               {activeLightboxPost.captureDate?.toDate 
-                 ? activeLightboxPost.captureDate.toDate().toLocaleDateString() 
-                 : (activeLightboxPost.createdAt?.toDate ? activeLightboxPost.createdAt.toDate().toLocaleDateString() : "")}
-            </span>
+            <button onClick={() => { setEditingDate(false); setLightboxPost(null); }} className="p-2 text-zinc-300 hover:text-white"><X className="w-8 h-8" /></button>
+            {editingDate ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateText}
+                  onChange={e => setDateText(e.target.value)}
+                  className="bg-zinc-800 text-white text-sm rounded-lg px-2 py-1 border border-zinc-600 focus:outline-none focus:border-zinc-400"
+                />
+                <button onClick={handleSaveDate} className="rounded-full bg-rose-500 hover:bg-rose-600 w-8 h-8 flex items-center justify-center transition-colors shrink-0">
+                  <Check className="w-4 h-4 text-white" />
+                </button>
+                <button onClick={() => setEditingDate(false)} className="rounded-full bg-zinc-700 hover:bg-zinc-600 w-8 h-8 flex items-center justify-center transition-colors shrink-0">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            ) : user ? (
+              <button
+                onClick={() => { setDateText(toDateInputValue(getPostDate(activeLightboxPost))); setEditingDate(true); }}
+                className="flex items-center gap-1 text-sm font-medium text-zinc-300 hover:text-white active:bg-zinc-800/50 rounded-lg px-2 py-1 transition-colors"
+              >
+                {getPostDate(activeLightboxPost).toLocaleDateString()}
+                <Pencil className="w-3 h-3 text-zinc-500" />
+              </button>
+            ) : (
+              <span className="text-sm font-medium text-zinc-400">
+                {activeLightboxPost.captureDate?.toDate || activeLightboxPost.createdAt?.toDate
+                  ? getPostDate(activeLightboxPost).toLocaleDateString()
+                  : ""}
+              </span>
+            )}
             <div className="w-10 flex justify-end">
-              {user && (
+              {user && !editingDate && (
                 <button onClick={() => handleDelete(activeLightboxPost.id, activeLightboxPost.imageUrl)} className="p-2 text-zinc-400 hover:text-red-400">
                   <Trash2 className="w-5 h-5" />
                 </button>
