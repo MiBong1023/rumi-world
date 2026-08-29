@@ -15,8 +15,20 @@ import { useVersionCheck } from "@/lib/useVersionCheck";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, increment, limit } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject, type UploadTaskSnapshot } from "firebase/storage";
 import imageCompression from "browser-image-compression";
+
+// 업로드 다이얼로그에서 파일 한 장의 상태
+type UploadStatus = "pending" | "working" | "done" | "failed";
+
+// 남은 시간 표기 (5초 단위로 반올림해 숫자가 덜 튀게 한다)
+const formatEta = (sec: number) => {
+  const s = Math.max(5, Math.round(sec / 5) * 5);
+  if (s < 60) return `약 ${s}초 남음`;
+  const m = Math.floor(s / 60);
+  const rest = Math.round((s % 60) / 10) * 10;
+  return rest ? `약 ${m}분 ${rest}초 남음` : `약 ${m}분 남음`;
+};
 
 interface Comment {
   id: string;
@@ -58,6 +70,23 @@ export default function Home() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // 업로드 진행 상황: 파일별 상태 + 전체 진행률(0~1) + 남은 시간(초)
+  const [fileStatus, setFileStatus] = useState<UploadStatus[]>([]);
+  const [uploadRatio, setUploadRatio] = useState(0);
+  const [uploadEta, setUploadEta] = useState<number | null>(null);
+  const previewStripRef = useRef<HTMLDivElement>(null);
+
+  // 여러 장을 올릴 때 진행 중인 썸네일이 가로 스크롤 밖으로 밀려나지 않도록 따라간다.
+  useEffect(() => {
+    const active = fileStatus.indexOf("working");
+    if (active < 0) return;
+    previewStripRef.current?.children[active]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [fileStatus]);
 
   // 미리보기 objectURL 은 files 가 바뀔 때 한 번만 만들고 정리해 누수를 막는다.
   const filePreviews = useMemo(
@@ -338,8 +367,14 @@ export default function Home() {
   };
 
   // 파일 1장 업로드 (압축→스토리지→Firestore). 실패 시 throw.
-  const uploadOne = async (f: File) => {
+  // onProgress: 이 파일 한 장의 진행률 0~1. 압축 구간과 전송 구간을 가중치로 이어 붙인다.
+  const uploadOne = async (f: File, onProgress: (ratio: number) => void) => {
     if (!user) throw new Error("로그인이 필요합니다.");
+
+    const isImage = f.type.startsWith("image/");
+    // 이미지는 압축이 체감상 꽤 걸리므로 앞 25% 구간을 압축에 배정한다.
+    const PREP_WEIGHT = isImage ? 0.25 : 0;
+    onProgress(0);
 
     let captureDate = new Date();
     if (f.type.startsWith("image/")) {
@@ -357,12 +392,29 @@ export default function Home() {
       if (f.lastModified) captureDate = new Date(f.lastModified);
     }
 
-    const fileToUpload = f.type.startsWith("image/")
-      ? await imageCompression(f, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true })
+    const fileToUpload = isImage
+      ? await imageCompression(f, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1920,
+          useWebWorker: true,
+          onProgress: (percent) => onProgress((percent / 100) * PREP_WEIGHT),
+        })
       : f;
+    onProgress(PREP_WEIGHT);
 
     const storageRef = ref(storage, `posts/${Date.now()}_${Math.random().toString(36).substring(7)}_${f.name}`);
-    const snapshot = await uploadBytes(storageRef, fileToUpload);
+    const task = uploadBytesResumable(storageRef, fileToUpload);
+    const snapshot = await new Promise<UploadTaskSnapshot>((resolve, reject) => {
+      task.on(
+        "state_changed",
+        (snap) => {
+          const sent = snap.totalBytes ? snap.bytesTransferred / snap.totalBytes : 0;
+          onProgress(PREP_WEIGHT + sent * (1 - PREP_WEIGHT));
+        },
+        reject,
+        () => resolve(task.snapshot),
+      );
+    });
     const downloadUrl = await getDownloadURL(snapshot.ref);
 
     await addDoc(collection(db, "posts"), {
@@ -380,6 +432,9 @@ export default function Home() {
     if (!user) return alert("로그인이 필요합니다.");
 
     setUploading(true);
+    setFileStatus(files.map((_, i) => (i === 0 ? "working" : "pending")));
+    setUploadRatio(0);
+    setUploadEta(null);
 
     // 순차 처리 + 실패분 재시도.
     // 모바일 메모리/네트워크 압력을 낮추고, 한 장이 실패해도 나머지는 계속 진행.
@@ -387,33 +442,56 @@ export default function Home() {
     const failed: File[] = [];
     let lastError: unknown = null;
 
-    for (const f of files) {
+    const total = files.length;
+    const startedAt = Date.now();
+    let finished = 0; // 성공/실패로 끝난 장수
+
+    // 전체 진행률 = (끝난 장수 + 현재 장의 진행률) / 전체.
+    // 남은 시간은 지금까지의 평균 속도로 단순 추정한다(장별 크기 차이는 평균으로 흡수).
+    const report = (currentRatio: number) => {
+      const ratio = Math.min(1, (finished + currentRatio) / total);
+      setUploadRatio(ratio);
+      const elapsed = (Date.now() - startedAt) / 1000;
+      setUploadEta(ratio > 0.03 && elapsed > 1 ? (elapsed * (1 - ratio)) / ratio : null);
+    };
+
+    for (const [index, f] of files.entries()) {
+      setFileStatus((prev) => prev.map((s, i) => (i === index ? "working" : s)));
       let ok = false;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
         try {
-          await uploadOne(f);
+          await uploadOne(f, report);
           ok = true;
         } catch (err) {
           lastError = err;
           // 마지막 시도가 아니면 잠깐 쉬었다 재시도 (네트워크 순간 끊김 대응).
           if (attempt < MAX_ATTEMPTS) {
+            report(0); // 재시도는 이 장을 처음부터 다시 올린다
             await new Promise((r) => setTimeout(r, 800 * attempt));
           }
         }
       }
       if (!ok) failed.push(f);
+      finished++;
+      report(0);
+      setFileStatus((prev) => prev.map((s, i) => (i === index ? (ok ? "done" : "failed") : s)));
     }
 
     setUploading(false);
+    setUploadEta(null);
 
     if (failed.length === 0) {
       setUploadOpen(false);
       setFiles([]);
+      setFileStatus([]);
+      setUploadRatio(0);
       return;
     }
 
     // 성공분은 이미 올라갔으므로, 실패한 파일만 남겨 중복 없이 재시도할 수 있게 한다.
     setFiles(failed);
+    setFileStatus([]);
+    setUploadRatio(0);
     const succeeded = files.length - failed.length;
     const detail = lastError ? `\n(${(lastError as FirebaseError).message})` : "";
     alert(
@@ -651,7 +729,7 @@ export default function Home() {
 
       {/* Floating Action Button */}
       {user && (
-        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <Dialog open={uploadOpen} onOpenChange={(open) => { if (!uploading) setUploadOpen(open); }}>
           <DialogTrigger className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 transition-colors">
             <Plus className="h-6 w-6 font-bold" />
           </DialogTrigger>
@@ -660,19 +738,33 @@ export default function Home() {
               <DialogTitle className="text-xl">새 사진 올리기</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-6 py-4">
-              <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 hover:bg-zinc-100 transition-colors relative overflow-hidden">
+              <label className={`flex h-48 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors relative overflow-hidden ${uploading ? "cursor-default" : "cursor-pointer hover:bg-zinc-100"}`}>
                 {files.length > 0 ? (
-                  <div className="flex gap-2 overflow-x-auto w-full h-full p-2 bg-zinc-800 absolute inset-0 items-center hide-scrollbar">
-                    {filePreviews.map((p, i) => (
-                      p.isVideo ? (
-                        <div key={i} className="h-full auto aspect-square relative flex-shrink-0">
-                          <video src={p.url} className="w-full h-full object-cover rounded-md" />
-                          <PlayCircle className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-white drop-shadow-xl opacity-90" />
+                  <div ref={previewStripRef} className="flex gap-2 overflow-x-auto w-full h-full p-2 bg-zinc-800 absolute inset-0 items-center hide-scrollbar">
+                    {filePreviews.map((p, i) => {
+                      const status = fileStatus[i];
+                      return (
+                        <div key={i} className="h-full aspect-square relative flex-shrink-0">
+                          {p.isVideo ? (
+                            <>
+                              <video src={p.url} className="w-full h-full object-cover rounded-md" />
+                              <PlayCircle className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-white drop-shadow-xl opacity-90" />
+                            </>
+                          ) : (
+                            <img src={p.url} alt={`preview-${i}`} className="w-full h-full object-cover rounded-md" />
+                          )}
+                          {/* 업로드 중에는 장별 상태를 썸네일 위에 겹쳐 보여준다 */}
+                          {status && status !== "pending" && (
+                            <div className={`absolute inset-0 flex items-center justify-center rounded-md ${status === "done" ? "bg-black/30" : "bg-black/55"}`}>
+                              {status === "working" && <Loader2 className="w-6 h-6 text-white animate-spin" />}
+                              {status === "done" && <Check className="w-6 h-6 text-white drop-shadow" />}
+                              {status === "failed" && <X className="w-6 h-6 text-rose-300" />}
+                            </div>
+                          )}
+                          {status === "pending" && <div className="absolute inset-0 rounded-md bg-black/50" />}
                         </div>
-                      ) : (
-                        <img key={i} src={p.url} alt={`preview-${i}`} className="h-full auto aspect-square object-cover rounded-md flex-shrink-0" />
-                      )
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-zinc-400">
@@ -680,13 +772,39 @@ export default function Home() {
                     <p className="font-medium">사진 및 동영상 선택</p>
                   </div>
                 )}
-                <Input type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                <Input type="file" accept="image/*,video/*" multiple disabled={uploading} className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
               </label>
-              <p className="text-xs text-zinc-400 text-center -mt-2">코멘트는 업로드 후 각 사진에서 추가할 수 있어요.</p>
+
+              {uploading ? (
+                <div className="-mt-2 flex flex-col gap-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
+                    <div
+                      className="h-full rounded-full bg-rose-500 transition-[width] duration-200 ease-linear"
+                      style={{ width: `${Math.round(uploadRatio * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-zinc-500">
+                    <span>
+                      {Math.min(files.length, fileStatus.filter((s) => s === "done" || s === "failed").length + 1)}/{files.length}장 · {Math.round(uploadRatio * 100)}%
+                    </span>
+                    <span>{uploadEta !== null ? formatEta(uploadEta) : "남은 시간 계산 중…"}</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 text-center">완료될 때까지 이 화면을 닫지 말아주세요.</p>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400 text-center -mt-2">코멘트는 업로드 후 각 사진에서 추가할 수 있어요.</p>
+              )}
             </div>
             <DialogFooter>
               <Button disabled={uploading || files.length === 0} className="w-full bg-rose-500 text-white hover:bg-rose-600 py-6 rounded-xl text-lg font-bold font-sans" onClick={handleUpload}>
-                {uploading ? <Loader2 className="animate-spin" /> : `${files.length > 0 ? `${files.length}장 ` : ''}업로드`}
+                {uploading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="animate-spin" />
+                    업로드 중 {Math.round(uploadRatio * 100)}%
+                  </span>
+                ) : (
+                  `${files.length > 0 ? `${files.length}장 ` : ''}업로드`
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
